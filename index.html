@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Draw Roll Race</title>
+<meta name="description" content="Draw arms and legs for your stick runner, then redraw them mid-race to beat every obstacle.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="world" aria-label="Race view"></canvas>
+
+<header id="hud">
+  <div class="bar" id="progress" aria-hidden="true"></div>
+  <div class="row">
+    <span id="stage-label">Stage 1</span>
+    <span id="section-label"></span>
+    <span id="timer">0.00 s</span>
+  </div>
+</header>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<section id="pad-wrap">
+  <p id="pad-hint">Draw from the shoulder or hip to give your runner arms or legs</p>
+  <canvas id="pad" width="320" height="200" aria-label="Drawing pad"></canvas>
+  <div class="pad-tools">
+    <button id="clear-btn" type="button">Clear</button>
+  </div>
+</section>
+
+<div id="result" hidden>
+  <div class="card">
+    <h2 id="result-title"></h2>
+    <p id="result-stage"></p>
+    <p class="big" id="result-time"></p>
+    <p id="result-cpu"></p>
+    <button id="next-btn" type="button" class="primary"></button>
+    <button id="share-btn" type="button">Share my runner</button>
+  </div>
+</div>
+
+<script src="src/physics.js"></script>
+<script src="src/game.js"></script>
+</body>
+</html>
