@@ -30,8 +30,8 @@ jobs:
       - name: Unit tests (physics replays, courses, limbs, validation, moderation)
         run: npm run test:unit
 
-      - name: CPUs finish the fixed, tutorial, daily, endless and random courses
-        run: npm run sim -- 10 10 2
+      - name: Every kind of course can be finished (and the tutorial CPU finishes it)
+        run: npm run sim -- 10 10 10
 
       - name: Worker builds
         run: npx wrangler deploy --dry-run --outdir dist
@@ -39,7 +39,7 @@ jobs:
       - name: Install the test browser
         run: npx playwright install --with-deps chromium
 
-      - name: Browser tests (rooms, CPUs, reconnecting, cheating, solo, daily)
+      - name: Browser tests (rooms, reconnecting, cheating, solo, daily, passkeys)
         run: npm run test:e2e
         env:
           E2E_SHOW_SERVER_LOG: '1'

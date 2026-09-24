@@ -1,4 +1,4 @@
-// Other racers in a room (people and CPUs): their positions arrive ~15 times a second and are
+// Other people in a room: their positions arrive ~15 times a second and are
 // drawn RENDER_DELAY_MS in the past, blended between the two updates around that moment.
 import { decodeLimbs } from '../../shared/limbs';
 import { POSES } from '../../shared/poses';
@@ -28,8 +28,6 @@ export interface RemoteRacer {
   limbs: EncodedLimbs | null;
   runner: Runner | null;
   samples: Sample[];
-  /** CPUs only. */
-  difficulty?: string;
 }
 
 interface RacerInfo {

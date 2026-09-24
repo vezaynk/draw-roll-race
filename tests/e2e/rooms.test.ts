@@ -1,4 +1,5 @@
-// Rooms: public listing, joining, CPUs run by the room, host handover, private rooms, bad codes.
+// Rooms: public listing, joining, racing, host handover, private rooms, bad codes. (Rooms have
+// no CPUs: the only CPU is in the tutorial.)
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
@@ -8,7 +9,7 @@ import {
 const browser = await launch();
 after(() => browser.close());
 
-test('public room with CPUs: listing, race, results, host handover, private join by code', async () => {
+test('public room: listing, race, results, host handover, private join by code', async () => {
   const step = (m: string) => console.log(`# step: ${m}`);
   const ana = await newPlayer(browser, 'Ana');
   const code = await createRoom(ana, { name: 'Sunday Sprint', isPublic: true, testStage: 990 });
@@ -26,24 +27,18 @@ test('public room with CPUs: listing, race, results, host handover, private join
   await drawWheel(ben);
   step('ben joined');
 
-  // The host fills slots with CPUs.
-  await ['easy', 'normal', 'hard'].reduce((done, difficulty) => done.then(async () => {
-    await ana.selectOption('#cpu-difficulty', difficulty);
-    await ana.click('#add-cpu');
-    await ana.waitForTimeout(150);
-  }), Promise.resolve());
-  await waitForText(ben, '#racer-count', /5 \/ 8 racers/);
-  step('cpus added');
+  await waitForText(ben, '#racer-count', /2 \/ 8 racers/);
+  assert.equal(await ana.locator('#add-cpu, #cpu-controls').count(), 0, 'no CPUs in rooms');
 
-  // Race: Ben sees the CPUs move even though nobody's browser runs them.
+  // Race: Ben sees Ana move.
   await ana.click('#start-btn');
   await ben.waitForTimeout(4500);
   const dots = await ben.evaluate(() => document.querySelectorAll('#progress .dot.remote').length);
-  assert.equal(dots, 4, 'Ben should see Ana and three CPUs');
+  assert.equal(dots, 1, 'Ben should see Ana');
   step('race seen');
 
-  // The host leaves mid-race; the CPUs keep racing and finish.
-  await ana.click('#leave-btn');
+  // The host leaves mid-race; Ben finishes and the race ends.
+  await ana.click('#exit-btn');
   // Ben raced, so the race ends on the results card: no "race again", but "Return to lobby".
   await waitForText(ben, '#result', /Race results/i, 60000);
   step('race ended');
@@ -58,7 +53,6 @@ test('public room with CPUs: listing, race, results, host handover, private join
   // Ben's finish was replayed by the room: a tick with how long the check took.
   const tick = await ben.getAttribute('#results-list .verify.ok', 'title');
   assert.match(tick ?? '', /^Server-validated in \d+\.\d\d seconds$/);
-  assert.equal((results.match(/CPU/g) || []).length, 3, `all three CPUs appear in the results: ${results}`);
   assert.match(await text(ben, '#player-list'), /HOST/i);
 
   // Private rooms leave the public list but can be joined by code.

@@ -16,6 +16,7 @@ declare global {
         finished: boolean;
         racing: boolean;
         ghosts: unknown[];
+        cpu: unknown;
         player: Runner | null;
         course: Course;
         recording: { inputs: RunInput[] } | null;
@@ -89,6 +90,21 @@ export async function drawSpokes(page: Page, len = 76): Promise<void> {
   await page.mouse.move(...at(160, 120), { steps: 8 });
   await page.mouse.move(...at(160 + len, 120), { steps: 8 });
   await page.mouse.up();
+}
+
+/** A straight arm from the shoulder, pointing right. */
+export async function drawArm(page: Page, len = 80): Promise<void> {
+  const at = await padPoint(page);
+  await page.mouse.move(...at(160, 68));
+  await page.mouse.down();
+  await page.mouse.move(...at(160 + len, 68), { steps: 10 });
+  await page.mouse.up();
+}
+
+/** A double click on the pad at pad coordinates (x, y). */
+export async function doubleTapPad(page: Page, x: number, y: number): Promise<void> {
+  const at = await padPoint(page);
+  await page.mouse.dblclick(...at(x, y));
 }
 
 /** Visible text of an element (empty if it or a parent is hidden). */

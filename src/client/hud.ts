@@ -70,7 +70,8 @@ export function updateControls(): void {
 interface Dots {
   player: HTMLElement;
   ghosts: HTMLElement[];
-  cpus: HTMLElement[];
+  /** The tutorial CPU's dot. */
+  cpu: HTMLElement;
 }
 
 let dots: Dots | null = null;
@@ -87,8 +88,8 @@ export function buildProgress(): void {
     zone.style.width = `${((s.to - s.from) / span) * 100}%`;
     progress.append(zone);
   });
-  dots = { ghosts: [], player: el('div', 'dot player'), cpus: [] };
-  progress.append(dots.player, el('span', 'flag', '🏁'));
+  dots = { ghosts: [], player: el('div', 'dot player'), cpu: el('div', 'dot cpu') };
+  progress.append(dots.cpu, dots.player, el('span', 'flag', '🏁'));
   byId('stage-label').textContent = stageName(state.stage);
   updateControls();
 }
@@ -118,19 +119,8 @@ export function updateHud(): void {
 
   d.player.hidden = !state.player;
   if (state.player) d.player.style.left = at(state.player.x);
-  while (d.cpus.length < state.cpus.length) {
-    const dot = el('div', 'dot cpu');
-    progress.insertBefore(dot, d.player);
-    d.cpus.push(dot);
-  }
-  d.cpus.forEach((dot, i) => {
-    const cpu = state.cpus[i];
-    dot.hidden = !cpu;
-    if (cpu) {
-      dot.style.background = cpu.runner.color;
-      dot.style.left = at(cpu.runner.x);
-    }
-  });
+  d.cpu.hidden = !state.cpu;
+  if (state.cpu) d.cpu.style.left = at(state.cpu.runner.x);
   while (d.ghosts.length < state.ghosts.length) {
     const dot = el('div', 'dot ghost');
     progress.insertBefore(dot, d.player);

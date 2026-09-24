@@ -235,7 +235,7 @@ const BUILDERS: Record<SectionType, Builder> = {
   },
 };
 
-/** Where a CPU should change shape around a section. */
+/** Where to change shape around a section (followed by the tutorial CPU and the tests' bot). */
 function planFor(sec: CourseSection): PlanStep[] {
   if (sec.type === 'crawl' && sec.wallX !== undefined) {
     return [

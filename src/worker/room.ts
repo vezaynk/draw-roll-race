@@ -1,13 +1,11 @@
 // One Durable Object per room. Each browser simulates its own runner and sends its position;
 // the room relays positions and drawn limbs, runs the race (lobby → countdown → racing → lobby),
-// checks finishes against the course it builds itself, and runs the CPU racers. Public rooms are
+// checks finishes by replaying each run on the course. Public rooms are
 // listed in the Directory. Between races the room hibernates, so a quiet room costs nothing.
 import { DurableObject } from 'cloudflare:workers';
-import buildCourse from '../shared/course/build';
 import {
   RANDOM_BASE, STAGES, isTestStage,
 } from '../shared/course/stages';
-import { isDifficulty } from '../shared/cpu/personality';
 import { sanitizeLimbs } from '../shared/limbs';
 import { cleanInputs } from '../shared/replay';
 import type { RunInput } from '../shared/replay';
@@ -18,12 +16,11 @@ import type {
   PlayerInfo, RaceResult, RoomInfo, ServerMessage,
 } from '../shared/protocol';
 import type { LimbKind } from '../shared/types';
-import CpuSimulation from './cpuSimulation';
 import type { Env } from './env';
 import { cleanText, logError } from './http';
 import { moderateName } from './moderation';
 import {
-  freshRoom, hasFinished, isCpuId, isPlayer, wireNumber,
+  freshRoom, hasFinished, isPlayer, wireNumber,
 } from './roomState';
 import type { Attachment, Player, RoomState } from './roomState';
 import verifyRun from './verify';
@@ -31,8 +28,6 @@ import verifyRun from './verify';
 const COUNTDOWN_MS = 3500;
 /** A race ends after this even if someone is stuck. */
 const RACE_LIMIT_MS = 4 * 60 * 1000;
-/** Once every person is done, CPUs get this long to finish. */
-const CPU_GRACE_MS = 10 * 1000;
 /** A dropped player can come back as themselves within this. */
 const REJOIN_MS = 60 * 1000;
 const MAX_MESSAGE = 8 * 1024;
@@ -46,8 +41,6 @@ const STATE_RATE = 40;
 const EMOTE_GAP_MS = 700;
 /** Everyone sees themselves in red, so nobody else is ever red. */
 const COLORS = ['#3a7bd5', '#2fa36b', '#c9892b', '#9a5bd6', '#e0508f', '#1f9fb0', '#7a8a2e', '#5b6472'];
-const CPU_NAMES = ['Bolt', 'Wobble', 'Spoke', 'Zippy', 'Noodle', 'Gizmo', 'Pogo', 'Rusty', 'Dash',
-  'Sprocket', 'Doodle', 'Tumble'];
 const TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
 
 type Message = Record<string, unknown> & { type: string };
@@ -80,14 +73,12 @@ export class RaceRoom extends DurableObject<Env> {
   /** Player id → when they last sent an emote. */
   private readonly lastEmote = new Map<string, number>();
 
-  private cpus: CpuSimulation | null = null;
-
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     ctx.blockConcurrencyWhile(async () => {
       const stored = await ctx.storage.get<RoomState>('room');
       this.room = { ...freshRoom(), ...stored };
-      // CPUs live in memory; if the room restarted mid-race they are gone, so end that race.
+      // Finish checks in progress live in memory; if the room restarted mid-race, end that race.
       if (this.room.phase === 'racing') {
         this.room.phase = 'lobby';
         this.room.results = [];
@@ -105,7 +96,6 @@ export class RaceRoom extends DurableObject<Env> {
       name: this.room.name,
       isPublic: this.room.isPublic,
       players: people,
-      cpus: this.room.cpus.length,
       phase: this.room.phase,
       full: people >= MAX_RACERS,
     };
@@ -137,7 +127,6 @@ export class RaceRoom extends DurableObject<Env> {
       resumed: !!resumed,
       room: this.publicRoom(),
       players: await this.playerList(),
-      cpuLimbs: Object.fromEntries(this.cpus?.limbs ?? []),
     });
     const { token: omitted, ...shown } = player;
     this.broadcast({ type: 'join', player: { ...shown, limbs: null }, resumed: !!resumed }, server);
@@ -193,12 +182,8 @@ export class RaceRoom extends DurableObject<Env> {
       const roomName = cleanText(url.searchParams.get('room_name'), 24);
       room.name = moderateName(roomName, `${player.name}'s room`);
       room.hostId = player.id;
-      room.cpus = [];
     } else if (!others.some((ws) => info(ws)?.id === room.hostId)) {
       room.hostId = player.id;
-    }
-    if (room.phase === 'lobby' && this.trimCpus(others.length + 1)) {
-      this.broadcast({ type: 'cpus', cpus: room.cpus });
     }
     this.save();
     return player;
@@ -231,9 +216,7 @@ export class RaceRoom extends DurableObject<Env> {
     const { room } = this;
     if (room.phase !== 'racing') return;
     const now = Date.now();
-    const timeUp = now >= room.startsAt + RACE_LIMIT_MS - 1000;
-    const graceOver = room.graceUntil > 0 && now >= room.graceUntil - 50;
-    if (timeUp || graceOver) await this.endRace();
+    if (now >= room.startsAt + RACE_LIMIT_MS - 1000) await this.endRace();
   }
 
   // ---------------- messages ----------------
@@ -287,36 +270,6 @@ export class RaceRoom extends DurableObject<Env> {
       this.broadcast({
         type: 'settings', isPublic: room.isPublic, name: room.name, nextStage: room.nextStage,
       });
-      await this.publish();
-    },
-
-    addCpu: async (_ws, me, msg) => {
-      const { room } = this;
-      if (me.id !== room.hostId || room.phase !== 'lobby') return;
-      if (this.people().length + room.cpus.length >= MAX_RACERS) return;
-      const used = new Set(room.cpus.map((c) => c.name));
-      const free = CPU_NAMES.filter((n) => !used.has(n));
-      room.cpuSerial += 1;
-      room.cpus.push({
-        id: `cpu-${room.cpuSerial}`,
-        name: free.length ? free[randomInt() % free.length] : `CPU ${room.cpuSerial}`,
-        color: this.freeColor(),
-        difficulty: isDifficulty(msg.difficulty) ? msg.difficulty : 'normal',
-        seed: randomInt(),
-      });
-      this.save();
-      this.broadcast({ type: 'cpus', cpus: room.cpus });
-      await this.publish();
-    },
-
-    removeCpu: async (_ws, me, msg) => {
-      const { room } = this;
-      if (me.id !== room.hostId || room.phase !== 'lobby') return;
-      const before = room.cpus.length;
-      room.cpus = room.cpus.filter((c) => c.id !== msg.id);
-      if (room.cpus.length === before) return;
-      this.save();
-      this.broadcast({ type: 'cpus', cpus: room.cpus });
       await this.publish();
     },
 
@@ -408,7 +361,6 @@ export class RaceRoom extends DurableObject<Env> {
   /** The last person left: forget everything and leave the directory. */
   private async closeRoom(): Promise<void> {
     const { code } = this.room;
-    this.stopCpus();
     await this.ctx.storage.deleteAll();
     await this.ctx.storage.deleteAlarm();
     this.room = freshRoom();
@@ -437,25 +389,20 @@ export class RaceRoom extends DurableObject<Env> {
     const { room } = this;
     room.stage = this.pickStage(asked);
     const people = this.people();
-    this.trimCpus(people.length);
     room.phase = 'racing';
     room.raceId += 1;
     room.startsAt = Date.now() + COUNTDOWN_MS;
     room.results = [];
-    room.graceUntil = 0;
     room.ready = [];
-    room.participants = people.map((s) => info(s)?.id ?? '').filter(Boolean)
-      .concat(room.cpus.map((c) => c.id));
+    room.participants = people.map((s) => info(s)?.id ?? '').filter(Boolean);
     this.save();
     await this.ctx.storage.setAlarm(room.startsAt + RACE_LIMIT_MS);
-    this.startCpus();
     this.broadcast({
       type: 'countdown',
       raceId: room.raceId,
       stage: room.stage,
       ms: COUNTDOWN_MS,
       participants: room.participants,
-      cpus: room.cpus,
     });
     await this.publish();
   }
@@ -468,25 +415,6 @@ export class RaceRoom extends DurableObject<Env> {
     if (here.length && here.every((id) => id && room.ready.includes(id))) {
       await this.startRace(room.nextStage);
     }
-  }
-
-  private startCpus(): void {
-    this.stopCpus();
-    this.cpus = new CpuSimulation(buildCourse(this.room.stage), this.room.cpus, this.room.startsAt, {
-      limbs: (id, limbs, pose, lost) => this.broadcast({
-        type: 'limbs', id, limbs, pose, lost,
-      }),
-      positions: (s) => this.broadcast({ type: 'cpuStates', s }),
-      finished: (id, time) => {
-        const cpu = this.room.cpus.find((c) => c.id === id);
-        if (cpu) this.record(cpu, time).catch((e) => logError('cpu finish failed', e));
-      },
-    });
-    this.cpus.start();
-  }
-
-  private stopCpus(): void {
-    this.cpus?.stop();
   }
 
   /**
@@ -544,7 +472,7 @@ export class RaceRoom extends DurableObject<Env> {
       time = Math.round(time * 100) / 100;
     }
     const result: RaceResult = {
-      id: racer.id, name: racer.name, color: racer.color, time, cpu: isCpuId(racer.id),
+      id: racer.id, name: racer.name, color: racer.color, time,
     };
     if (verify) result.verify = verify;
     room.results.push(result);
@@ -557,10 +485,7 @@ export class RaceRoom extends DurableObject<Env> {
     await this.maybeEndRace();
   }
 
-  /**
-   * The race ends when every person in it has finished or given up. CPUs still running then get
-   * CPU_GRACE_MS to finish, so a room of fast people doesn't wait on a stuck CPU.
-   */
+  /** The race ends when every person in it has finished or given up (or left). */
   private async maybeEndRace(gone?: WebSocket): Promise<void> {
     const { room } = this;
     if (room.phase !== 'racing') return;
@@ -570,39 +495,18 @@ export class RaceRoom extends DurableObject<Env> {
     if (checking) return;
     const peopleRacing = room.participants.filter((id) => here.has(id) && !hasFinished(room, id));
     if (peopleRacing.length) return;
-    const cpusRacing = room.participants.filter((id) => isCpuId(id) && !hasFinished(room, id));
-    if (!cpusRacing.length || !here.size || !this.cpus?.running) {
-      await this.endRace();
-      return;
-    }
-    if (!room.graceUntil) {
-      room.graceUntil = Date.now() + CPU_GRACE_MS;
-      this.save();
-      await this.ctx.storage.setAlarm(room.graceUntil);
-    }
+    await this.endRace();
   }
 
   private async endRace(): Promise<void> {
     const { room } = this;
-    this.stopCpus();
     room.phase = 'lobby';
-    room.graceUntil = 0;
-    // CPUs that never finished are listed as such.
-    room.participants.forEach((id) => {
-      const cpu = room.cpus.find((c) => c.id === id);
-      if (cpu && !hasFinished(room, id)) {
-        room.results.push({
-          id, name: cpu.name, color: cpu.color, time: null, cpu: true, dnf: true,
-        });
-      }
-    });
     room.lastResults = room.results;
     room.results = [];
-    this.trimCpus(this.people().length);
     this.save();
     await this.ctx.storage.deleteAlarm();
     this.broadcast({
-      type: 'raceEnd', raceId: room.raceId, results: room.lastResults, hostId: room.hostId, cpus: room.cpus,
+      type: 'raceEnd', raceId: room.raceId, results: room.lastResults, hostId: room.hostId,
     });
     this.writeStats();
     await this.publish();
@@ -611,12 +515,13 @@ export class RaceRoom extends DurableObject<Env> {
   /** Race numbers for Workers Analytics Engine (only when the binding exists). */
   private writeStats(): void {
     const { room } = this;
-    const people = room.lastResults.filter((r) => !r.cpu);
+    const people = room.lastResults;
     const times = people.map((r) => r.time).filter((t): t is number => t !== null);
     const mean = times.length ? times.reduce((a, t) => a + t, 0) / times.length : 0;
     this.env.STATS?.writeDataPoint({
       blobs: ['race', room.stage >= RANDOM_BASE ? 'random' : String(room.stage)],
-      doubles: [people.length, room.lastResults.length - people.length, times.length, mean],
+      // The second value was the number of CPUs (always 0 now); kept so queries stay the same.
+      doubles: [people.length, 0, times.length, mean],
       indexes: ['race'],
     });
   }
@@ -639,7 +544,6 @@ export class RaceRoom extends DurableObject<Env> {
           name: room.name,
           host: host?.name ?? '',
           players: people.length,
-          cpus: room.cpus.length,
           phase: room.phase,
         });
       } else {
@@ -658,27 +562,18 @@ export class RaceRoom extends DurableObject<Env> {
     return this.ctx.getWebSockets().filter((ws) => info(ws));
   }
 
-  /** Drops CPUs (newest first) until people and CPUs fit. Returns true if any were dropped. */
-  private trimCpus(people: number): boolean {
-    const keep = Math.max(0, MAX_RACERS - people);
-    if (this.room.cpus.length <= keep) return false;
-    this.room.cpus = this.room.cpus.slice(0, keep);
-    return true;
-  }
-
   private freeColor(): string {
-    const used = new Set(this.people().map((ws) => info(ws)?.color)
-      .concat(this.room.cpus.map((c) => c.color)));
+    const used = new Set(this.people().map((ws) => info(ws)?.color));
     return COLORS.find((c) => !used.has(c)) ?? COLORS[this.room.joins % COLORS.length];
   }
 
   private publicRoom(): RoomInfo {
     const {
-      code, name, isPublic, phase, stage, raceId, hostId, participants, results, lastResults, cpus,
+      code, name, isPublic, phase, stage, raceId, hostId, participants, results, lastResults,
       ready, nextStage,
     } = this.room;
     return {
-      code, name, isPublic, phase, stage, raceId, hostId, participants, results, lastResults, cpus,
+      code, name, isPublic, phase, stage, raceId, hostId, participants, results, lastResults,
       ready, nextStage,
     };
   }

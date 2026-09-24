@@ -1,11 +1,10 @@
 // Messages between browsers and a room (worker/room.ts), and the data they carry.
-import type { Difficulty } from './cpu/personality';
 import type { RunInput } from './replay';
 import type {
   EncodedLimbs, LimbKind, Pose,
 } from './types';
 
-/** People and CPUs in one room. */
+/** People in one room. */
 export const MAX_RACERS = 8;
 
 /** Room codes: 5 characters with no 0/O/1/I/L, so they are easy to read aloud. */
@@ -27,26 +26,15 @@ export interface PlayerInfo {
   limbs?: EncodedLimbs | null;
 }
 
-export interface RoomCpu {
-  id: string;
-  name: string;
-  color: string;
-  difficulty: Difficulty;
-  seed: number;
-}
-
 export interface RaceResult {
   id: string;
   name: string;
   color: string;
   /** Seconds, or null for gave up / did not finish. */
   time: number | null;
-  cpu: boolean;
-  /** A CPU that did not finish in time. */
-  dnf?: boolean;
   /**
    * People's finishes are checked by replaying their run on the server: pending until the replay
-   * is done, then ok or failed. (CPUs are run by the server, so they have none.)
+   * is done, then ok or failed.
    */
   verify?: 'pending' | 'ok' | 'failed';
   /** How long the check took. */
@@ -66,7 +54,6 @@ export interface RoomInfo {
   participants: string[];
   results: RaceResult[];
   lastResults: RaceResult[];
-  cpus: RoomCpu[];
   /** People who are ready for the next race; when everyone is, it starts. */
   ready: string[];
   /** The course the next race uses (a stage, RANDOM_COURSE or SAME_COURSE). */
@@ -79,12 +66,8 @@ export interface ListedRoom {
   name: string;
   host: string;
   players: number;
-  cpus: number;
   phase: RoomPhase;
 }
-
-/** [id, x, y, arm angle, leg angle] */
-export type CpuState = [string, number, number, number, number];
 
 export type ClientMessage =
   | { type: 'state'; r: number; x: number; y: number; a: number; b: number }
@@ -93,8 +76,6 @@ export type ClientMessage =
   | { type: 'settings'; isPublic?: boolean; name?: string; nextStage?: number }
   | { type: 'ready'; ready: boolean }
   | { type: 'emote'; e: number }
-  | { type: 'addCpu'; difficulty: Difficulty }
-  | { type: 'removeCpu'; id: string }
   | { type: 'start'; stage: number }
   | { type: 'finish'; r: number; time: number; inputs: RunInput[] }
   | { type: 'giveup'; r: number };
@@ -102,7 +83,6 @@ export type ClientMessage =
 export type ServerMessage =
   | {
     type: 'welcome'; you: string; resumed: boolean; room: RoomInfo; players: PlayerInfo[];
-    cpuLimbs: Record<string, EncodedLimbs>;
   }
   | { type: 'join'; player: PlayerInfo; resumed: boolean }
   | { type: 'leave'; id: string; hostId: string | null }
@@ -110,19 +90,17 @@ export type ServerMessage =
   | { type: 'settings'; isPublic: boolean; name: string; nextStage: number }
   | { type: 'ready'; ids: string[] }
   | { type: 'emote'; id: string; e: number }
-  | { type: 'cpus'; cpus: RoomCpu[] }
   | { type: 'limbs'; id: string; limbs: EncodedLimbs; pose?: Pose; lost?: LimbKind[] }
   | {
-    type: 'countdown'; raceId: number; stage: number; ms: number; participants: string[]; cpus: RoomCpu[];
+    type: 'countdown'; raceId: number; stage: number; ms: number; participants: string[];
   }
   | { type: 'state'; id: string; x: number; y: number; a: number; b: number }
-  | { type: 'cpuStates'; s: CpuState[] }
   | { type: 'result'; raceId: number; result: RaceResult; place: number | null }
   | {
     type: 'verified'; raceId: number; id: string; ok: boolean; time: number | null; seconds: number;
   }
   | {
-    type: 'raceEnd'; raceId: number; results: RaceResult[]; hostId: string | null; cpus: RoomCpu[];
+    type: 'raceEnd'; raceId: number; results: RaceResult[]; hostId: string | null;
   }
   | { type: 'notice'; message: string }
   | { type: 'error'; code: string; message: string };

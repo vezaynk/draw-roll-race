@@ -25,7 +25,7 @@ export function ceilingNearby(course: Course, x: number): boolean {
   return false;
 }
 
-/** Index of the CPU plan step in force at x. */
+/** Index of the plan step (which shape to use) in force at x. */
 export function planIndex(course: Course, x: number): number {
   let k = 0;
   course.plan.forEach((step, i) => {

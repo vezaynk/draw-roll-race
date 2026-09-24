@@ -19,15 +19,15 @@ export function courseKey(): string {
 function placeText(place: number, win: boolean): string {
   if (state.stage === TUTORIAL) return 'Tutorial complete!';
   if (!win) return `You finished ${ordinal(place)}`;
-  return state.cpus.length ? 'You win!' : 'Finished!';
+  return 'Finished!';
 }
 
+/** The tutorial CPU's race, if there was one. */
 function cpuText(win: boolean): string {
-  const n = state.cpus.length;
-  if (!n) return '';
-  if (win) return n === 1 ? 'The CPU was still racing' : `All ${n} CPUs were still racing`;
-  const fastest = Math.min(...state.cpus.map((c) => c.finishTime ?? Infinity));
-  return `Fastest CPU: ${fastest.toFixed(2)} s`;
+  const { cpu } = state;
+  if (!cpu) return '';
+  if (win) return 'The CPU was still racing';
+  return `The CPU finished in ${(cpu.finishTime ?? 0).toFixed(2)} s`;
 }
 
 function nextStep(win: boolean): { action: NextAction; label: string } {
@@ -50,15 +50,15 @@ function recordBest(): { text: string; isNew: boolean } {
 }
 
 export default function showResults(): void {
-  const ahead = state.cpus.filter((c) => c.finishTime !== null && c.finishTime <= state.time);
-  const place = 1 + ahead.length;
+  const cpuAhead = !!state.cpu && state.cpu.finishTime !== null && state.cpu.finishTime <= state.time;
+  const place = cpuAhead ? 2 : 1;
   const win = place === 1;
   const title = byId('result-title');
   title.textContent = placeText(place, win);
   title.className = win ? 'win' : 'lose';
   byId('result-stage').textContent = stageName(state.stage);
   byId('result-time').textContent = `${state.time.toFixed(2)} s`;
-  byId('result-cpu').textContent = cpuText(win);
+  byId('result-detail').textContent = cpuText(win);
 
   const best = recordBest();
   byId('result-best').textContent = best.text;

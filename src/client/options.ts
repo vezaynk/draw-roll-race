@@ -1,5 +1,4 @@
-// The Options panel (⚙): solo opponents, sound, vibration, ghost and drawing-pad size.
-import { isDifficulty } from '../shared/cpu/personality';
+// The Options panel (⚙): your player, sound, vibration, ghost and drawing-pad size.
 import { byId } from './dom';
 import { resize } from './render/scene';
 import { state } from './state';
@@ -23,8 +22,6 @@ export function closeOptions(): void {
 
 function openOptions(): void {
   if (state.racing) return;
-  byId<HTMLSelectElement>('opt-cpus').value = String(save.cpuCount);
-  byId<HTMLSelectElement>('opt-difficulty').value = save.cpuDifficulty;
   byId<HTMLInputElement>('opt-sound').checked = save.sound;
   byId<HTMLInputElement>('opt-vibrate').checked = save.vibrate;
   byId<HTMLInputElement>('opt-ghost').checked = save.ghost;
@@ -53,12 +50,6 @@ function bindSelect(id: string, apply: (value: string, data: SaveData) => void):
 export default function initOptions(): void {
   byId('menu-btn').addEventListener('click', () => (panel().hidden ? openOptions() : closeOptions()));
   byId('options-close').addEventListener('click', closeOptions);
-  bindSelect('opt-cpus', (v) => {
-    save.cpuCount = Math.max(0, Math.min(7, Number(v) || 0));
-  });
-  bindSelect('opt-difficulty', (v) => {
-    save.cpuDifficulty = isDifficulty(v) ? v : 'mixed';
-  });
   bindSelect('opt-pad', (v) => {
     save.pad = PAD_SIZES.find((size) => size === v) ?? 'normal';
     applySettings();

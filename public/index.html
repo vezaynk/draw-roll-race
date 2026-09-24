@@ -41,7 +41,7 @@
     <h2 id="result-title"></h2>
     <p id="result-stage"></p>
     <p class="big" id="result-time"></p>
-    <p id="result-cpu"></p>
+    <p id="result-detail"></p>
     <p id="result-best"></p>
     <section id="leaderboard" hidden>
       <h3 id="lb-title">Today's leaderboard</h3>
@@ -74,20 +74,6 @@
         <button id="logout-btn" type="button" class="quiet" hidden>Log out</button>
       </div>
       <p id="account-note" class="menu-note" role="status"></p>
-    </section>
-    <section class="menu-block" aria-labelledby="cpu-title">
-      <h3 id="cpu-title">Solo opponents</h3>
-      <div class="field-row">
-        <label for="opt-cpus">CPUs</label>
-        <select id="opt-cpus">
-          <option value="0">None</option><option value="1">1</option><option value="2">2</option><option value="3">3</option>
-          <option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option>
-        </select>
-        <label for="opt-difficulty">Level</label>
-        <select id="opt-difficulty">
-          <option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option><option value="mixed">Mixed</option>
-        </select>
-      </div>
     </section>
     <section class="menu-block" aria-labelledby="feel-title">
       <h3 id="feel-title">Sound and screen</h3>
@@ -161,15 +147,6 @@
     </div>
     <ul id="player-list" aria-label="Racers"></ul>
     <button id="follow-btn" type="button" hidden></button>
-    <div id="cpu-controls" hidden>
-      <label for="cpu-difficulty">CPU</label>
-      <select id="cpu-difficulty">
-        <option value="easy">Easy</option>
-        <option value="normal" selected>Normal</option>
-        <option value="hard">Hard</option>
-      </select>
-      <button id="add-cpu" type="button">Add CPU</button>
-    </div>
     <section id="results-box" hidden>
       <h3 id="results-title">Results</h3>
       <ol id="results-list"></ol>

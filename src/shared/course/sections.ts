@@ -1,13 +1,13 @@
 // The obstacle catalogue. Each section has fixed sizes for the hand-made stages and a generator
-// for random courses. Every generator range was checked with tools/sim.ts: CPUs of every
-// difficulty can finish. The order of this object is part of course generation: do not reorder.
+// for random courses. Every generator range is checked with tools/sim.ts: a scripted player can
+// finish. The order of this object is part of course generation: do not reorder.
 import { randInt, randNum } from '../random';
 import type { Rand } from '../random';
 import type { Pose, SectionParams, SectionType } from '../types';
 
 export interface SectionSpec {
   label: string;
-  /** What a CPU should switch to for this section (none: keep the wheel). */
+  /** The shape this section calls for (none: keep the wheel), for the tutorial CPU and tests. */
   pose?: Pose;
   /** Sizes used by the fixed stages. */
   def: SectionParams;

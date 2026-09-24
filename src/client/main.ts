@@ -8,7 +8,7 @@ import { buildProgress, updateHud } from './hud';
 import initOnline from './online';
 import initOptions from './options';
 import { initPad } from './pad';
-import { onLimbsDrawn, resetStage } from './race';
+import { onLimbCleared, onLimbsDrawn, resetStage } from './race';
 import { initScene } from './render/scene';
 import { initSound } from './sound';
 import { state } from './state';
@@ -32,7 +32,7 @@ function boot(): void {
   if (direct) state.stage = asked;
 
   initScene();
-  initPad(onLimbsDrawn);
+  initPad(onLimbsDrawn, onLimbCleared);
   initControls();
   initOptions();
   initAccount();

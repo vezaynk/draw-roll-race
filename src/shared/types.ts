@@ -117,7 +117,7 @@ export interface Joint {
 
 export interface Runner {
   color: string;
-  /** Limb speed multiplier (CPUs are slower). */
+  /** Limb speed multiplier (the tutorial CPU is slower). */
   speed: number;
   torso: Point[];
   spine: Point[];

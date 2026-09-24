@@ -1,13 +1,13 @@
-// A race on the current course: starting, the fixed-step loop, spikes, CPUs and finishing.
+// A race on the current course: starting, the fixed-step loop, spikes, the tutorial's CPU and
+// finishing.
 import { CFG } from '../shared/config';
 import buildCourse from '../shared/course/build';
-import { DIFFICULTIES } from '../shared/cpu/personality';
 import CpuRacer from '../shared/cpu/racer';
 import { hasLimbs } from '../shared/limbs';
 import { runnerAtStart, stepPlayer } from '../shared/replay';
 import { swapLimbs } from '../shared/runner';
 import type { Shattered } from '../shared/types';
-import { COLORS, CPU_COLORS } from './colors';
+import { COLORS } from './colors';
 import { byId } from './dom';
 import {
   loadGhost, recordInput, recordLimbs, recordSample, startRecording,
@@ -40,7 +40,7 @@ function playerAtStart() {
 export function resetStage(): void {
   state.course = buildCourse(state.stage);
   state.countdownEnd = 0;
-  state.cpus = [];
+  state.cpu = null;
   state.racing = false;
   state.finished = false;
   state.time = 0;
@@ -75,17 +75,16 @@ function onShatter(broken: Shattered): void {
   hooks.onLimbs?.(state.limbs, broken.lost);
 }
 
-function stepCpus(): void {
-  state.cpus.forEach((cpu) => {
-    if (cpu.finishTime !== null) return;
-    cpu.step(CFG.DT, state.time);
-    if (cpu.finishTime !== null && state.cpuTime === null) {
-      state.cpuTime = cpu.finishTime;
-      toast('A CPU finished!', 1600);
-      showHint('A CPU finished first. Keep going, or tap Exit to stop.', 3500);
-      byId('section-label').textContent = 'CPU finished';
-    }
-  });
+function stepCpu(): void {
+  const { cpu } = state;
+  if (!cpu || cpu.finishTime !== null) return;
+  cpu.step(CFG.DT, state.time);
+  if (cpu.finishTime !== null && state.cpuTime === null) {
+    state.cpuTime = cpu.finishTime;
+    toast('The CPU finished!', 1600);
+    showHint('The CPU finished first. Keep going, or tap Exit to stop.', 3500);
+    byId('section-label').textContent = 'CPU finished';
+  }
 }
 
 function finish(): void {
@@ -108,7 +107,7 @@ function tick(): boolean {
   state.steps += 1;
   const broken = stepPlayer(state.course, player, state.limbs);
   if (broken) onShatter(broken);
-  stepCpus();
+  stepCpu();
   const runner = state.player as NonNullable<typeof state.player>;
   if (state.recording) recordSample(state.recording, state.time, runner);
   if (runner.x >= state.course.finishX) {
@@ -161,30 +160,27 @@ function frame(ts: number): void {
   rafId = requestAnimationFrame(frame);
 }
 
-function soloCpus(): CpuRacer[] {
-  if (state.stage === TUTORIAL) return [];
-  // New personalities every race, so CPUs never play the same way twice.
-  return Array.from({ length: save.cpuCount }, (_, i) => new CpuRacer(state.course, {
+/** The tutorial races one easy CPU (a new personality each time); nothing else has CPUs. */
+function tutorialCpu(): CpuRacer | null {
+  if (state.stage !== TUTORIAL || state.mode !== 'solo') return null;
+  return new CpuRacer(state.course, {
     seed: Math.floor(Math.random() * 1e9),
-    difficulty: save.cpuDifficulty === 'mixed' ? DIFFICULTIES[i % DIFFICULTIES.length] : save.cpuDifficulty,
-    color: CPU_COLORS[i % CPU_COLORS.length],
+    color: COLORS.cpu,
     onSwap: (_limbs, _pose, lost, before) => {
       if (lost) spawnShards(before, lost);
     },
-  }));
+  });
 }
 
 export interface RaceOptions {
-  /** Race solo CPUs (default true). */
-  cpus?: boolean;
   /** Hold everyone still for a 3-2-1 first. */
   countdownMs?: number;
 }
 
-export function startRace({ cpus = true, countdownMs = 0 }: RaceOptions = {}): void {
+export function startRace({ countdownMs = 0 }: RaceOptions = {}): void {
   const player = playerAtStart();
   state.player = player;
-  state.cpus = cpus ? soloCpus() : [];
+  state.cpu = tutorialCpu();
   state.cpuTime = null;
   state.tipsShown = {};
   // Only your own best run comes back as a ghost (never other players', not even on the daily).
@@ -209,21 +205,39 @@ export function startRace({ cpus = true, countdownMs = 0 }: RaceOptions = {}): v
 }
 
 /** A new limb was drawn on the pad. */
+/** Mid-race: puts the current limbs on the runner, and records the change for replays. */
+function swapInLimbs(): void {
+  if (!state.player) return;
+  state.player = swapLimbs(state.course, state.player, state.limbs);
+  if (state.recording) {
+    recordLimbs(state.recording, state.time, state.limbs);
+    recordInput(state.recording, state.steps, state.limbs);
+  }
+}
+
 export function onLimbsDrawn(): void {
   hideHint();
   hooks.onLimbs?.(state.limbs);
   sfx('swap');
   if (state.racing && state.player) {
-    state.player = swapLimbs(state.course, state.player, state.limbs);
-    if (state.recording) {
-      recordLimbs(state.recording, state.time, state.limbs);
-      recordInput(state.recording, state.steps, state.limbs);
-    }
+    swapInLimbs();
   } else if (state.mode === 'online') {
     // In a room the host starts races; just show the new drawing at the start line.
     state.player = playerAtStart();
     render();
   } else if (!state.finished) {
     startRace();
+  }
+}
+
+/** A double tap cleared a limb: take it off the runner (a race keeps going without it). */
+export function onLimbCleared(): void {
+  hooks.onLimbs?.(state.limbs);
+  sfx('swap');
+  if (state.racing && state.player) {
+    swapInLimbs();
+  } else {
+    state.player = hasLimbs(state.limbs) ? playerAtStart() : null;
+    render();
   }
 }

@@ -46,9 +46,8 @@ async function checkAndJoin(code: string, actions: MenuActions): Promise<void> {
 function roomRow(room: ListedRoom, actions: MenuActions): HTMLElement {
   const row = el('li');
   const info = el('div', 'rinfo');
-  const cpus = room.cpus ? ` + ${plural(room.cpus, 'CPU')}` : '';
   const phase = room.phase === 'racing' ? 'racing now' : 'in the lobby';
-  info.append(el('span', 'rname', room.name), el('span', 'rmeta', `${plural(room.players, 'player')}${cpus} · ${phase}`));
+  info.append(el('span', 'rname', room.name), el('span', 'rmeta', `${plural(room.players, 'player')} · ${phase}`));
   const full = room.players >= MAX_RACERS;
   const button = el('button', '', full ? 'Full' : 'Join');
   button.setAttribute('type', 'button');
