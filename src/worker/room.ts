@@ -7,6 +7,7 @@ import {
   RANDOM_BASE, STAGES, isTestStage,
 } from '../shared/course/stages';
 import { sanitizeLimbs } from '../shared/limbs';
+import { sanitizeLook } from '../shared/look';
 import { cleanInputs } from '../shared/replay';
 import type { RunInput } from '../shared/replay';
 import {
@@ -246,6 +247,13 @@ export class RaceRoom extends DurableObject<Env> {
       this.broadcast({
         type: 'limbs', id: me.id, limbs, lost,
       }, ws);
+    },
+
+    look: (ws, me, msg) => {
+      if (!this.allow(me.id)) return;
+      const look = sanitizeLook(msg.look);
+      ws.serializeAttachment({ ...me, look } satisfies Attachment);
+      this.broadcast({ type: 'look', id: me.id, look }, ws);
     },
 
     name: async (ws, me, msg) => {

@@ -2,6 +2,8 @@
 // windows), so every access is wrapped and the game works without it.
 import { TUTORIAL } from '../shared/course/stages';
 import { playerHash } from '../shared/identity';
+import { DEFAULT_LOOK, sanitizeLook } from '../shared/look';
+import type { Look } from '../shared/look';
 import type { SectionType } from '../shared/types';
 import { randomId } from './dom';
 
@@ -31,6 +33,8 @@ export interface SaveData {
   playerHash: string;
   /** Signed in with a passkey on this device. */
   signedIn: boolean;
+  /** How your runner looks (hair, hat, eyes, glasses). */
+  look: Look;
 }
 
 const DEFAULTS: SaveData = {
@@ -46,6 +50,7 @@ const DEFAULTS: SaveData = {
   player: '',
   playerHash: '',
   signedIn: false,
+  look: DEFAULT_LOOK,
 };
 
 export function readJson<T>(key: string, fallback: T): T {
@@ -68,6 +73,7 @@ export function writeJson(key: string, value: unknown): void {
 function load(): { data: SaveData; firstVisit: boolean } {
   const stored = readJson<Partial<SaveData> | null>(SAVE_KEY, null);
   const data: SaveData = { ...DEFAULTS, ...stored };
+  data.look = sanitizeLook(data.look);
   const newId = !data.player;
   if (newId) data.player = crypto.randomUUID?.() ?? randomId();
   // For new players, the tutorial comes first in the stage list (the game opens on the daily

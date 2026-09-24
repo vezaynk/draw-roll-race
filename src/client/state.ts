@@ -64,6 +64,8 @@ export interface Hooks {
   onFinish?: (time: number) => void;
   /** The Exit button while online. */
   onExit?: () => void;
+  /** The player changed their look (Options). */
+  onLook?: () => void;
   /** "Return to lobby" on the results card after an online race. */
   onReturnToLobby?: () => void;
   /** Where the camera looks when you are not racing yourself. */

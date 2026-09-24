@@ -1,4 +1,5 @@
 // What a room stores between messages (Durable Object storage), and small helpers about it.
+import type { Look } from '../shared/look';
 import type { RaceResult, RoomPhase } from '../shared/protocol';
 
 /** A player who dropped: they can come back as themselves until `until`. */
@@ -56,6 +57,8 @@ export interface Player {
   color: string;
   joinedAt: number;
   token: string | null;
+  /** How their runner looks (they send it after joining). */
+  look?: Look;
 }
 
 /** Connections replaced by a reconnect, or already leaving, carry no player. */

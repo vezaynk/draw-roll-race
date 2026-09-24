@@ -9,7 +9,7 @@ import type {
 } from '../shared/types';
 import { GHOST_COLOR } from './colors';
 import { drawLabels, drawRunner, labelSpot } from './render/draw';
-import { readJson, writeJson } from './storage';
+import { readJson, save, writeJson } from './storage';
 
 const STORAGE_KEY = 'draw-roll-race-ghosts';
 /** Courses kept, most recent first, so storage stays small. */
@@ -132,6 +132,6 @@ export function drawGhost(g: CanvasRenderingContext2D, ghost: Ghost, t: number):
   runner.y = pose.y;
   runner.joints[0].angle = pose.a;
   runner.joints[1].angle = pose.b;
-  drawRunner(g, runner, 0.4);
+  drawRunner(g, runner, 0.4, save.look);
   drawLabels(g, [{ text: ghost.label, color: 'rgba(60,66,80,0.75)', ...labelSpot(runner) }]);
 }

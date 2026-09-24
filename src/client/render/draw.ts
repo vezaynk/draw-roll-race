@@ -1,6 +1,8 @@
 import { CFG } from '../../shared/config';
 import type { Point, Runner } from '../../shared/types';
+import type { Look } from '../../shared/look';
 import { COLORS } from '../colors';
+import drawHead from './look';
 
 export function polyline(g: CanvasRenderingContext2D, pts: readonly Point[]): void {
   g.beginPath();
@@ -19,7 +21,8 @@ export function limbLine(g: CanvasRenderingContext2D, pts: readonly Point[], col
   polyline(g, pts);
 }
 
-export function drawRunner(g: CanvasRenderingContext2D, body: Runner, alpha: number): void {
+/** Draws a runner. `look` dresses its head (hair, hat, eyes, glasses). */
+export function drawRunner(g: CanvasRenderingContext2D, body: Runner, alpha: number, look?: Look): void {
   g.save();
   g.globalAlpha = alpha;
   g.translate(body.x, body.y);
@@ -27,17 +30,7 @@ export function drawRunner(g: CanvasRenderingContext2D, body: Runner, alpha: num
   g.lineJoin = 'round';
   limbLine(g, body.spine, body.color);
   const { head } = body;
-  g.beginPath();
-  g.arc(head.x, head.y, head.r, 0, Math.PI * 2);
-  g.fillStyle = '#fff';
-  g.fill();
-  g.strokeStyle = COLORS.ink;
-  g.lineWidth = 2.5;
-  g.stroke();
-  g.beginPath();
-  g.arc(head.x + head.r * 0.4, head.y - head.r * 0.1, 1.7, 0, Math.PI * 2);
-  g.fillStyle = COLORS.ink;
-  g.fill();
+  drawHead(g, head.x, head.y, head.r, look, 2.5);
   body.joints.forEach((j) => {
     g.save();
     g.translate(j.ox, j.oy);

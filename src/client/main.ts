@@ -2,6 +2,7 @@
 import buildCourse from '../shared/course/build';
 import { RunReplay } from '../shared/replay';
 import initAccount from './account';
+import initLookPicker from './lookPicker';
 import initControls, { enterDaily } from './controls';
 import submitDaily, { initSaveScore } from './daily';
 import { buildProgress, updateHud } from './hud';
@@ -36,6 +37,7 @@ function boot(): void {
   initControls();
   initOptions();
   initAccount();
+  initLookPicker();
   initSaveScore();
   initSound();
   resetStage();

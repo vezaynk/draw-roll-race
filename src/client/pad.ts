@@ -10,7 +10,9 @@ import { COLORS } from './colors';
 import { byId } from './dom';
 import { showHint } from './hud';
 import { polyline } from './render/draw';
+import drawHead from './render/look';
 import { state } from './state';
+import { save } from './storage';
 
 let pad: HTMLCanvasElement;
 let pctx: CanvasRenderingContext2D;
@@ -57,11 +59,7 @@ export function renderPad(): void {
   pctx.strokeStyle = COLORS.ink;
   pctx.lineWidth = 4;
   polyline(pctx, [FIG.neck, FIG.hip]);
-  pctx.beginPath();
-  pctx.arc(FIG.head.x, FIG.head.y, FIG.head.r, 0, Math.PI * 2);
-  pctx.fillStyle = '#fff';
-  pctx.fill();
-  pctx.stroke();
+  drawHead(pctx, FIG.head.x, FIG.head.y, FIG.head.r, save.look, 4);
   // Limbs, and the stroke being drawn.
   pctx.strokeStyle = COLORS.player;
   pctx.lineWidth = 5;
