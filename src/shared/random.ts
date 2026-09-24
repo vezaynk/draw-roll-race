@@ -1,5 +1,5 @@
 // Seeded random numbers, so every browser and the server build the same courses and CPUs.
-/* eslint-disable no-bitwise -- xorshift and FNV hashing are bit operations by definition */
+// xorshift and FNV hashing are bit operations by definition.
 
 export type Rand = () => number;
 

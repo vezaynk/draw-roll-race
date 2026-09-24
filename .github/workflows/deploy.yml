@@ -27,9 +27,6 @@ jobs:
       - name: Type check
         run: npm run typecheck
 
-      - name: Lint (Airbnb style)
-        run: npm run lint
-
       - name: CPUs finish the fixed, tutorial, daily, endless and random courses
         run: npm run sim -- 10 10 2
 

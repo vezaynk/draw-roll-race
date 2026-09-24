@@ -23,7 +23,6 @@ function connect(code: string, name: string): Promise<Client> {
       const i = inbox.findIndex((m) => m.type === type);
       if (i >= 0) return inbox.splice(i, 1)[0] as Of<T>;
       // Polling the inbox until the message arrives.
-      // eslint-disable-next-line no-await-in-loop
       await pause(100);
     }
     throw new Error(`no ${type} message`);

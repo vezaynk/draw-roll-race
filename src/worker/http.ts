@@ -8,7 +8,6 @@ export function json(data: unknown, status = 200): Response {
 }
 
 /** Control and invisible formatting characters, which have no place in names. */
-// eslint-disable-next-line no-control-regex -- matching control characters is the point
 const HIDDEN = /[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f]/g;
 
 /** Text from a player: hidden characters removed, trimmed, cut to max characters. */
@@ -32,6 +31,6 @@ export async function allowed(
 
 /** Logs to Workers Observability. */
 export function logError(what: string, error: unknown): void {
-  // eslint-disable-next-line no-console -- console is how Workers logs reach Observability
+  // console is how Workers logs reach Observability.
   console.error(what, error);
 }

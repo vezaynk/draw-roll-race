@@ -39,7 +39,6 @@ server.stderr.on('data', (d) => {
 async function waitForServer() {
   for (let i = 0; i < 90; i += 1) {
     // Polling: each try waits for the previous one.
-    /* eslint-disable no-await-in-loop */
     try {
       const r = await fetch(`${BASE}api/health`);
       if (r.ok) return;
@@ -47,7 +46,6 @@ async function waitForServer() {
     await new Promise((res) => {
       setTimeout(res, 1000);
     });
-    /* eslint-enable no-await-in-loop */
   }
   throw new Error(`wrangler dev did not start:\n${log}`);
 }

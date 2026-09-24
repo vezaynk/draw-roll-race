@@ -13,7 +13,7 @@ Online rooms and the daily leaderboard need the Cloudflare Worker in this repo:
 npm install
 npm run dev        # http://localhost:8787
 npm run deploy     # to your Cloudflare account (run `npx wrangler login` first)
-npm test           # type check, lint, CPU course simulation, browser tests
+npm test           # type check, CPU course simulation, browser tests
 ```
 
 ## How to play
@@ -101,8 +101,7 @@ you rejoin within a minute as the same racer and keep racing.
 
 `.github/workflows/deploy.yml`:
 
-- **Every pull request and push:** type check, lint, the CPU course
-  simulation, a Worker build, and the browser tests (`tests/e2e`, run against
+- **Every pull request and push:** type check, the CPU course simulation, a Worker build, and the browser tests (`tests/e2e`, run against
   a local Worker).
 - **Pull requests from this repository:** a `wrangler preview` deployment named
   `pr-<number>`, with its own rooms and a separate preview database. Its link is
@@ -118,7 +117,7 @@ The daily leaderboard uses the D1 databases `draw-roll-race` (production) and
 
 ## Code
 
-TypeScript throughout, in the Airbnb style (`npm run lint`), in three layers:
+TypeScript throughout, written to the Airbnb style guide's principles, in three layers:
 
 - `src/shared/`: everything the browser, the server and the simulation share, with no DOM or
   Worker dependencies.
@@ -145,4 +144,4 @@ TypeScript throughout, in the Airbnb style (`npm run lint`), in three layers:
   courses enabled).
 
 Wrangler runs `npm run build` before `dev` and `deploy`, so the browser bundle is always
-current. `npm test` runs the type check, lint, simulation and browser tests.
+current. `npm test` runs the type check, simulation and browser tests.

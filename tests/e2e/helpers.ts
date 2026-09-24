@@ -67,7 +67,6 @@ export async function drawWheel(page: Page, r = 40): Promise<void> {
   for (let i = 0; i <= 16; i += 1) {
     const a = (i / 16) * Math.PI;
     // Sequential moves: each drag step depends on the last.
-    // eslint-disable-next-line no-await-in-loop
     await page.mouse.move(...at(160 + r * Math.cos(a), 120 + r * Math.sin(a)), { steps: 2 });
   }
   await page.mouse.up();
