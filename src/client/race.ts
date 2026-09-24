@@ -14,7 +14,7 @@ import {
   loadGhost, recordInput, recordLimbs, recordSample, startRecording,
 } from './ghost';
 import {
-  buildProgress, hideHint, showHint, toast, updateHud, updateStageButton,
+  buildProgress, hideHint, showHint, toast, updateControls, updateHud,
 } from './hud';
 import { renderPad } from './pad';
 import { render } from './render/scene';
@@ -59,7 +59,7 @@ export function stopRace(): void {
   state.racing = false;
   state.countdownEnd = 0;
   cancelAnimationFrame(rafId);
-  updateStageButton();
+  updateControls();
 }
 
 /** Spikes broke one or both limbs: throw the pieces, clear them from the pad, ask for a redraw. */
@@ -83,7 +83,7 @@ function stepCpus(): void {
     if (cpu.finishTime !== null && state.cpuTime === null) {
       state.cpuTime = cpu.finishTime;
       toast('A CPU finished!', 1600);
-      showHint('A CPU finished first. Keep going, or tap ↻ to restart.', 3500);
+      showHint('A CPU finished first. Keep going, or tap Exit to stop.', 3500);
       byId('section-label').textContent = 'CPU finished';
     }
   });
@@ -92,7 +92,7 @@ function stepCpus(): void {
 function finish(): void {
   state.racing = false;
   state.finished = true;
-  updateStageButton();
+  updateControls();
   updateHud();
   render();
   if (state.mode === 'online') {
@@ -198,7 +198,7 @@ export function startRace({ cpus = true, countdownMs = 0 }: RaceOptions = {}): v
   state.finished = false;
   state.countdownEnd = countdownMs ? performance.now() + countdownMs : 0;
   countdownShown = null;
-  updateStageButton();
+  updateControls();
   if (!state.countdownEnd) {
     toast('GO!', 700);
     sfx('go');

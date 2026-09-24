@@ -18,7 +18,7 @@ test('public room with CPUs: listing, race, results, host handover, private join
   // Ben finds the room in the public list.
   const ben = await newPlayer(browser, 'Ben', { width: 1280, height: 800 });
   await ben.goto(`${BASE}?teststage=990`);
-  await ben.click('#online-btn');
+  await ben.click('#start-online');
   await ben.waitForSelector('#public-rooms li button');
   assert.match(await text(ben, '#public-rooms'), /Sunday Sprint/);
   await ben.click('#public-rooms li button');
@@ -58,7 +58,7 @@ test('public room with CPUs: listing, race, results, host handover, private join
   assert.ok(!listed.rooms.some((r) => r.code === code), 'private room is not listed');
   const cy = await newPlayer(browser, 'Cy');
   await cy.goto(BASE);
-  await cy.click('#online-btn');
+  await cy.click('#start-online');
   await cy.fill('#join-code', code);
   await cy.click('#join-form button');
   await waitForText(cy, '#room-visibility', /private/i);
@@ -70,7 +70,7 @@ test('public room with CPUs: listing, race, results, host handover, private join
 test('joining a code with no room shows a clear error', async () => {
   const p = await newPlayer(browser, 'Dee');
   await p.goto(BASE);
-  await p.click('#online-btn');
+  await p.click('#start-online');
   await p.fill('#join-code', 'K7Q2M');
   await p.click('#join-form button');
   await waitForText(p, '#join-error', /No room is open with code K7Q2M/);
