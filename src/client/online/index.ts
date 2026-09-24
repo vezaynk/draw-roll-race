@@ -233,6 +233,19 @@ function onResult(m: Extract<ServerMessage, { type: 'result' }>): void {
   refreshLobby();
 }
 
+/** The room finished checking someone's run. */
+function onVerified(m: Extract<ServerMessage, { type: 'verified' }>): void {
+  if (!net.room || m.raceId !== net.room.raceId) return;
+  const { results, lastResults } = net.room;
+  [...results, ...lastResults].filter((r) => r.id === m.id).forEach((r) => Object.assign(r, {
+    verify: m.ok ? 'ok' : 'failed', verifySeconds: m.seconds, time: m.time,
+  }));
+  if (m.id === net.you && !m.ok) {
+    setStatus('The room replayed your run and couldn’t confirm it, so it doesn’t count.', true);
+  }
+  refreshLobby();
+}
+
 function onRaceEnd(m: Extract<ServerMessage, { type: 'raceEnd' }>): void {
   if (net.room) {
     Object.assign(net.room, {
@@ -268,6 +281,7 @@ function handle(m: ServerMessage): void {
     case 'welcome': onWelcome(m); break;
     case 'countdown': onCountdown(m); break;
     case 'result': onResult(m); break;
+    case 'verified': onVerified(m); break;
     case 'raceEnd': onRaceEnd(m); break;
     case 'limbs': onLimbs(m); break;
     case 'state': {
@@ -410,7 +424,10 @@ function installHooks(): void {
   };
   hooks.onFinish = (time) => {
     if (!net.racingIn) return;
-    send({ type: 'finish', r: net.raceId, time });
+    // The room replays the run from what was drawn when, to check it.
+    send({
+      type: 'finish', r: net.raceId, time, inputs: state.recording?.inputs ?? [],
+    });
     net.racingIn = false;
     setStatus(`You finished in ${time.toFixed(2)} s. Waiting for the others…`);
     showLobby(true);

@@ -48,6 +48,9 @@ test('public room with CPUs: listing, race, results, host handover, private join
   step('race ended');
   const results = await text(ben, '#results-list');
   assert.match(results, /You/);
+  // Ben's finish was replayed by the room: a tick with how long the check took.
+  const tick = await ben.getAttribute('#results-list .verify.ok', 'title');
+  assert.match(tick ?? '', /^Server-validated in \d+\.\d\d seconds$/);
   assert.equal((results.match(/CPU/g) || []).length, 3, `all three CPUs appear in the results: ${results}`);
   assert.match(await text(ben, '#player-list'), /HOST/i);
 

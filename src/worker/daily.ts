@@ -7,14 +7,13 @@
 // A run is sent as what was drawn at which physics step. The server replays it on the day's
 // course with the same physics the game uses (shared/replay.ts) and records the time the replay
 // takes, not the time claimed.
-import { CFG } from '../shared/config';
 import { dailyStage } from '../shared/course/stages';
 import { cleanInputs } from '../shared/replay';
-import type { RunInput } from '../shared/replay';
 import type { Env } from './env';
 import { cleanText, json, logError } from './http';
 import { moderateName } from './moderation';
-import type { ReplayProgress } from './runCheck';
+import verifyRun from './verify';
+import type { Verdict } from './verify';
 
 const TOP = 20;
 const PLAYER_RE = /^[A-Za-z0-9_-]{16,64}$/;
@@ -27,12 +26,13 @@ const MAX_BODY = 256 * 1024;
 
 let schemaReady: Promise<unknown> | null = null;
 
-/** Adds the column that holds each best run's inputs (tables made before replays lack it). */
-async function addRunColumn(db: D1Database): Promise<void> {
+/** Columns added after the table was first made: each best run's inputs, and how long its check took. */
+const LATER_COLUMNS: [string, string][] = [['run', 'TEXT'], ['verify_ms', 'INTEGER']];
+
+async function addLaterColumns(db: D1Database): Promise<void> {
   const columns = await db.prepare('PRAGMA table_info(daily_scores)').all<{ name: string }>();
-  if (!columns.results.some((c) => c.name === 'run')) {
-    await db.prepare('ALTER TABLE daily_scores ADD COLUMN run TEXT').run();
-  }
+  const missing = LATER_COLUMNS.filter(([name]) => !columns.results.some((c) => c.name === name));
+  await Promise.all(missing.map(([name, type]) => db.prepare(`ALTER TABLE daily_scores ADD COLUMN ${name} ${type}`).run()));
 }
 
 /** The table is created on first use, so production, previews and local runs need no setup. */
@@ -40,10 +40,10 @@ function ensureSchema(db: D1Database): Promise<unknown> {
   schemaReady ??= db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS daily_scores (
       day TEXT NOT NULL, player TEXT NOT NULL, name TEXT NOT NULL,
-      time REAL NOT NULL, created_at INTEGER NOT NULL, run TEXT,
+      time REAL NOT NULL, created_at INTEGER NOT NULL, run TEXT, verify_ms INTEGER,
       PRIMARY KEY (day, player))`),
     db.prepare('CREATE INDEX IF NOT EXISTS daily_by_time ON daily_scores (day, time)'),
-  ]).then(() => addRunColumn(db)).catch((e) => {
+  ]).then(() => addLaterColumns(db)).catch((e) => {
     schemaReady = null;
     throw e;
   });
@@ -61,13 +61,14 @@ interface Row {
   name: string;
   time: number;
   you: number;
+  verify_ms: number | null;
 }
 
 async function leaderboard(db: D1Database, url: URL): Promise<Response> {
   const asked = url.searchParams.get('day') ?? '';
   const day = DAY_RE.test(asked) ? asked : openDays()[0];
   const player = url.searchParams.get('player') ?? '';
-  const top = await db.prepare(`SELECT name, time, player = ?2 AS you FROM daily_scores
+  const top = await db.prepare(`SELECT name, time, player = ?2 AS you, verify_ms FROM daily_scores
     WHERE day = ?1 ORDER BY time, created_at LIMIT ?3`).bind(day, player, TOP).all<Row>();
   let you: { time: number; rank: number } | null = null;
   if (PLAYER_RE.test(player)) {
@@ -84,7 +85,12 @@ async function leaderboard(db: D1Database, url: URL): Promise<Response> {
   return json({
     day,
     stage: dailyStage(day),
-    top: top.results.map((r) => ({ name: r.name, time: r.time, you: !!r.you })),
+    top: top.results.map((r) => ({
+      name: r.name,
+      time: r.time,
+      you: !!r.you,
+      verifySeconds: r.verify_ms === null ? null : r.verify_ms / 1000,
+    })),
     you,
     total: total?.n ?? 0,
   });
@@ -105,22 +111,6 @@ async function leader(db: D1Database, url: URL): Promise<Response> {
       name: row.name, time: row.time, you: row.player === player, inputs: JSON.parse(row.run),
     },
   });
-}
-
-/**
- * Times a run by replaying it in a RunCheck Durable Object, a slice at a time. Returns the
- * replay's finish time, or null if the run never reaches the finish.
- */
-async function replayTime(env: Env, stage: number, inputs: RunInput[]): Promise<number | null> {
-  const check = env.RUN_CHECK.get(env.RUN_CHECK.newUniqueId());
-  await check.begin(stage, inputs, Math.ceil(MAX_RUN_SECONDS / CFG.DT));
-  let progress: ReplayProgress | null;
-  do {
-    // Each slice waits on the one before it.
-    progress = await check.advance();
-    if (!progress) throw new Error('replay lost its state');
-  } while (!progress.done);
-  return progress.finished ? progress.time : null;
 }
 
 interface Submission {
@@ -146,29 +136,34 @@ async function submit(env: Env, db: D1Database, request: Request): Promise<Respo
   if (!PLAYER_RE.test(player)) return json({ error: 'Missing player id.' }, 400);
   const inputs = cleanInputs(body.inputs);
   if (!inputs) return json({ error: 'The run is missing its recording.' }, 422);
-  let replayed: number | null;
+  let verdict: Verdict;
   try {
-    replayed = await replayTime(env, dailyStage(day), inputs);
+    verdict = await verifyRun(env, dailyStage(day), inputs, MAX_RUN_SECONDS);
   } catch (e) {
     logError('daily replay failed', e);
     return json({ error: 'The server could not check your run. Try again.' }, 503);
   }
-  if (replayed === null) {
-    return json({ error: 'The server replayed your run and it did not reach the finish.' }, 422);
+  const seconds = Math.round(verdict.ms) / 1000;
+  if (!verdict.finished) {
+    return json({ error: 'The server replayed your run and it did not reach the finish.', verifySeconds: seconds }, 422);
   }
-  const time = Math.round(replayed * 100) / 100;
+  const time = Math.round(verdict.time * 100) / 100;
   const name = moderateName(cleanText(body.name, 16), 'Runner');
   // Keep each player's best time for the day, with the run that set it.
-  await db.prepare(`INSERT INTO daily_scores (day, player, name, time, created_at, run)
-    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+  await db.prepare(`INSERT INTO daily_scores (day, player, name, time, created_at, run, verify_ms)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
     ON CONFLICT (day, player) DO UPDATE SET name = excluded.name,
       created_at = CASE WHEN excluded.time < daily_scores.time THEN excluded.created_at ELSE daily_scores.created_at END,
       run = CASE WHEN excluded.time <= daily_scores.time
         THEN excluded.run ELSE daily_scores.run END,
+      verify_ms = CASE WHEN excluded.time <= daily_scores.time
+        THEN excluded.verify_ms ELSE daily_scores.verify_ms END,
       time = MIN(daily_scores.time, excluded.time)`)
-    .bind(day, player, name, time, Date.now(), JSON.stringify(inputs)).run();
+    .bind(day, player, name, time, Date.now(), JSON.stringify(inputs), verdict.ms).run();
   env.STATS?.writeDataPoint({ blobs: ['daily', day], doubles: [time], indexes: ['daily'] });
-  return json({ ok: true, time, claimed: Number(body.time) || null });
+  return json({
+    ok: true, time, claimed: Number(body.time) || null, verifySeconds: seconds,
+  });
 }
 
 export default async function handleDaily(request: Request, env: Env): Promise<Response> {

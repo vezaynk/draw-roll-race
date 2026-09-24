@@ -9,14 +9,15 @@ import {
 } from '../shared/course/stages';
 import { isDifficulty } from '../shared/cpu/personality';
 import { sanitizeLimbs } from '../shared/limbs';
+import { cleanInputs } from '../shared/replay';
+import type { RunInput } from '../shared/replay';
 import {
   EMOTES, MAX_RACERS, RANDOM_COURSE, SAME_COURSE,
 } from '../shared/protocol';
 import type {
   PlayerInfo, RaceResult, RoomInfo, ServerMessage,
 } from '../shared/protocol';
-import type { Course, LimbKind } from '../shared/types';
-import { finishIsPossible, possibleMove } from '../shared/validation';
+import type { LimbKind } from '../shared/types';
 import CpuSimulation from './cpuSimulation';
 import type { Env } from './env';
 import { cleanText, logError } from './http';
@@ -25,6 +26,7 @@ import {
   freshRoom, hasFinished, isCpuId, isPlayer, wireNumber,
 } from './roomState';
 import type { Attachment, Player, RoomState } from './roomState';
+import verifyRun from './verify';
 
 const COUNTDOWN_MS = 3500;
 /** A race ends after this even if someone is stuck. */
@@ -34,6 +36,10 @@ const CPU_GRACE_MS = 10 * 1000;
 /** A dropped player can come back as themselves within this. */
 const REJOIN_MS = 60 * 1000;
 const MAX_MESSAGE = 8 * 1024;
+/** A finish carries the whole run (what was drawn at which step), so it may be bigger. */
+const MAX_FINISH_MESSAGE = 256 * 1024;
+/** A replayed finish can't be earlier than the room's clock allows (seconds of slack). */
+const CLOCK_SLACK = 1.5;
 /** Position messages per second per sender. */
 const STATE_RATE = 40;
 /** Shortest gap between one person's emotes. */
@@ -73,11 +79,6 @@ export class RaceRoom extends DurableObject<Env> {
 
   /** Player id → when they last sent an emote. */
   private readonly lastEmote = new Map<string, number>();
-
-  /** Player id → last position they reported this race. */
-  private readonly positions = new Map<string, { x: number; t: number }>();
-
-  private course: Course | null = null;
 
   private cpus: CpuSimulation | null = null;
 
@@ -204,13 +205,14 @@ export class RaceRoom extends DurableObject<Env> {
   }
 
   override async webSocketMessage(ws: WebSocket, raw: string | ArrayBuffer): Promise<void> {
-    if (typeof raw !== 'string' || raw.length > MAX_MESSAGE) return;
+    if (typeof raw !== 'string' || raw.length > MAX_FINISH_MESSAGE) return;
     let msg: Message;
     try {
       msg = JSON.parse(raw);
     } catch {
       return;
     }
+    if (raw.length > MAX_MESSAGE && msg?.type !== 'finish') return;
     const me = info(ws);
     if (!me || !msg || typeof msg.type !== 'string') return;
     const handler = this.handlers[msg.type];
@@ -238,13 +240,16 @@ export class RaceRoom extends DurableObject<Env> {
 
   private readonly handlers: Record<string, Handler> = {
     state: (ws, me, msg) => {
-      // Hot path: relay only. Remember the position so finishes can be checked.
+      // Hot path: relay only. (Finishes are checked by replaying the run, not from positions.)
       const { room } = this;
       if (room.phase !== 'racing' || msg.r !== room.raceId || !this.allow(me.id)) return;
-      const x = wireNumber(msg.x);
-      this.trackPosition(me.id, x);
       this.broadcast({
-        type: 'state', id: me.id, x, y: wireNumber(msg.y), a: wireNumber(msg.a), b: wireNumber(msg.b),
+        type: 'state',
+        id: me.id,
+        x: wireNumber(msg.x),
+        y: wireNumber(msg.y),
+        a: wireNumber(msg.a),
+        b: wireNumber(msg.b),
       }, ws);
     },
 
@@ -339,16 +344,16 @@ export class RaceRoom extends DurableObject<Env> {
       this.broadcast({ type: 'emote', id: me.id, e }, ws);
     },
 
-    finish: async (ws, me, msg) => {
+    finish: async (_ws, me, msg) => {
       const { room } = this;
       if (room.phase !== 'racing' || msg.r !== room.raceId) return;
-      const course = this.course ?? buildCourse(room.stage);
+      if (!room.participants.includes(me.id) || hasFinished(room, me.id)) return;
+      // Counted at once as pending, then checked by replaying the run.
       const elapsed = (Date.now() - room.startsAt) / 1000;
-      if (!finishIsPossible(course, elapsed, Number(msg.time), this.positions.get(me.id)?.x)) {
-        sendTo(ws, { type: 'notice', message: 'The room couldn’t confirm that finish, so it wasn’t counted.' });
-        return;
-      }
-      await this.record(me, Number(msg.time));
+      const inputs = cleanInputs(msg.inputs);
+      await this.record(me, Number(msg.time), 'pending');
+      this.verifyFinish(me.id, room.raceId, room.stage, inputs, elapsed)
+        .catch((e) => logError('finish check failed', e));
     },
 
     giveup: async (_ws, me, msg) => {
@@ -443,7 +448,6 @@ export class RaceRoom extends DurableObject<Env> {
       .concat(room.cpus.map((c) => c.id));
     this.save();
     await this.ctx.storage.setAlarm(room.startsAt + RACE_LIMIT_MS);
-    this.positions.clear();
     this.startCpus();
     this.broadcast({
       type: 'countdown',
@@ -468,8 +472,7 @@ export class RaceRoom extends DurableObject<Env> {
 
   private startCpus(): void {
     this.stopCpus();
-    this.course = buildCourse(this.room.stage);
-    this.cpus = new CpuSimulation(this.course, this.room.cpus, this.room.startsAt, {
+    this.cpus = new CpuSimulation(buildCourse(this.room.stage), this.room.cpus, this.room.startsAt, {
       limbs: (id, limbs, pose, lost) => this.broadcast({
         type: 'limbs', id, limbs, pose, lost,
       }),
@@ -486,17 +489,49 @@ export class RaceRoom extends DurableObject<Env> {
     this.cpus?.stop();
   }
 
-  /** Ignores positions that jump faster than any runner can move, so they can't reach the line. */
-  private trackPosition(id: string, x: number): void {
-    const t = Date.now();
-    const last = this.positions.get(id);
-    if (last && !possibleMove(last.x, last.t / 1000, x, t / 1000, 150)) return;
-    this.positions.set(id, { x, t });
+  /**
+   * Replays a finished run. It passes if the replay reaches the finish, no earlier than the room's
+   * clock allows; the replay's time then replaces the claimed one. A failed run stays in the
+   * results, marked as failed and without a place.
+   */
+  private async verifyFinish(
+    id: string,
+    raceId: number,
+    stage: number,
+    inputs: RunInput[] | null,
+    elapsed: number,
+  ): Promise<void> {
+    let ok = false;
+    let time: number | null = null;
+    let ms = 0;
+    if (inputs) {
+      try {
+        const verdict = await verifyRun(this.env, stage, inputs, RACE_LIMIT_MS / 1000);
+        ms = verdict.ms;
+        ok = verdict.finished && verdict.time <= elapsed + CLOCK_SLACK;
+        time = Math.round(verdict.time * 100) / 100;
+      } catch (e) {
+        logError('finish replay failed', e);
+      }
+    }
+    const { room } = this;
+    if (room.raceId !== raceId) return;
+    const result = [...room.results, ...room.lastResults].find((r) => r.id === id && r.verify === 'pending');
+    if (!result) return;
+    result.verify = ok ? 'ok' : 'failed';
+    result.verifySeconds = ms / 1000;
+    if (ok) result.time = time;
+    this.save();
+    this.broadcast({
+      type: 'verified', raceId, id, ok, time: result.time, seconds: ms / 1000,
+    });
+    await this.maybeEndRace();
   }
 
   private async record(
     racer: { id: string; name: string; color: string },
     claimed: number | null,
+    verify?: RaceResult['verify'],
   ): Promise<void> {
     const { room } = this;
     if (!room.participants.includes(racer.id) || hasFinished(room, racer.id)) return;
@@ -511,9 +546,11 @@ export class RaceRoom extends DurableObject<Env> {
     const result: RaceResult = {
       id: racer.id, name: racer.name, color: racer.color, time, cpu: isCpuId(racer.id),
     };
+    if (verify) result.verify = verify;
     room.results.push(result);
     this.save();
-    const place = time === null ? null : room.results.filter((r) => r.time !== null).length;
+    const placed = room.results.filter((r) => r.time !== null && r.verify !== 'failed');
+    const place = time === null ? null : placed.length;
     this.broadcast({
       type: 'result', raceId: room.raceId, result, place,
     });
@@ -528,6 +565,9 @@ export class RaceRoom extends DurableObject<Env> {
     const { room } = this;
     if (room.phase !== 'racing') return;
     const here = new Set(this.people().filter((s) => s !== gone).map((s) => info(s)?.id));
+    // A finish still being checked keeps the race open (the time limit still applies).
+    const checking = room.results.some((r) => r.verify === 'pending');
+    if (checking) return;
     const peopleRacing = room.participants.filter((id) => here.has(id) && !hasFinished(room, id));
     if (peopleRacing.length) return;
     const cpusRacing = room.participants.filter((id) => isCpuId(id) && !hasFinished(room, id));
