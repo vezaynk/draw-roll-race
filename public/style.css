@@ -7,6 +7,8 @@
   --muted: #8a90a0;
 }
 * { box-sizing: border-box; }
+/* The hidden attribute always hides, whatever display a rule gives the element. */
+[hidden] { display: none !important; }
 html, body {
   margin: 0; height: 100%; overflow: hidden;
   touch-action: manipulation; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent;
@@ -70,7 +72,7 @@ html, body {
   -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill;
 }
 #mode-title[hidden],
-body:has(#options:not([hidden]), #online-menu:not([hidden]), #result:not([hidden])) #mode-title { display: none; }
+body:has(#options:not([hidden]), #online-menu:not([hidden]), #look-menu:not([hidden]), #result:not([hidden])) #mode-title { display: none; }
 #mode-name { margin: 0; font-size: clamp(28px, 7vw, 54px); font-weight: 900; line-height: 1.1; }
 #mode-sub { margin: 6px 0 0; font-size: clamp(15px, 3.4vw, 22px); font-weight: 800; -webkit-text-stroke-width: 1.5px; }
 body:has(#toast.show) #mode-title { visibility: hidden; }
@@ -96,7 +98,7 @@ body:has(#toast.show) #mode-title { visibility: hidden; }
 /* Start screen: big buttons above the drawing pad, shown while no solo race runs. */
 #start-menu { display: flex; gap: 8px; width: 100%; margin-bottom: 4px; }
 #start-menu[hidden],
-body:has(#options:not([hidden]), #online-menu:not([hidden]), #result:not([hidden])) #start-menu { display: none; }
+body:has(#options:not([hidden]), #online-menu:not([hidden]), #look-menu:not([hidden]), #result:not([hidden])) #start-menu { display: none; }
 #start-menu button {
   flex: 1 1 0; min-width: 0; min-height: 64px; padding: 8px 6px; border-radius: 16px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
@@ -142,7 +144,7 @@ button:focus-visible { outline: 3px solid var(--player); outline-offset: 2px; }
 /* ---------- Online rooms ---------- */
 #hud .bar .dot.remote { width: 12px; height: 12px; margin: -6px 0 0 -6px; opacity: .85; }
 
-#lobby, #online-menu, #options {
+#lobby, #online-menu, #options, #look-menu {
   position: fixed; left: 0; right: 0; top: calc(max(14px, env(safe-area-inset-top)) + 56px);
   display: flex; justify-content: center; padding: 0 16px; pointer-events: none;
 }
@@ -153,17 +155,17 @@ button:focus-visible { outline: 3px solid var(--player); outline-offset: 2px; }
 #toast { z-index: 10; }
 #result, #lobby, #online-menu { z-index: 20; }
 #hud { z-index: 30; }
-#options { z-index: 40; }
-#lobby[hidden], #online-menu[hidden], #options[hidden] { display: none; }
-#lobby .card, #online-menu .card, #options .card {
+#options, #look-menu { z-index: 40; }
+#lobby[hidden], #online-menu[hidden], #options[hidden], #look-menu[hidden] { display: none; }
+#lobby .card, #online-menu .card, #options .card, #look-menu .card {
   pointer-events: auto; width: min(100%, 380px);
   max-height: calc(100vh - 56px - min(86vw, 420px) * 0.625 - 110px); overflow-y: auto;
   background: #fff; border: 2px solid var(--ink); border-radius: 18px;
   padding: 14px 16px; box-shadow: 0 12px 32px rgba(0,0,0,.2);
   display: flex; flex-direction: column; gap: 10px;
 }
-#lobby .lobby-head, #online-menu .lobby-head, #options .lobby-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-#lobby h2, #online-menu h2, #options h2 { margin: 0; font-size: 20px; overflow-wrap: anywhere; }
+#lobby .lobby-head, #online-menu .lobby-head, #options .lobby-head, #look-menu .lobby-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+#lobby h2, #online-menu h2, #options h2, #look-menu h2 { margin: 0; font-size: 20px; overflow-wrap: anywhere; }
 #room-code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .08em; }
 #copy-link { padding: 5px 12px; font-size: 13px; }
 #lobby-status { margin: 0; font-size: 14px; color: var(--muted); }
@@ -200,7 +202,7 @@ button.quiet { border-color: #c9cdd6; color: var(--muted); padding: 5px 12px; fo
 button:disabled { opacity: .5; cursor: default; }
 #lobby.compact .name-row, #lobby.compact #player-list { display: none; }
 
-#online-menu .card, #options .card { max-height: calc(100vh - 80px); gap: 14px; }
+#online-menu .card, #options .card, #look-menu .card { max-height: calc(100vh - 80px); gap: 14px; }
 .menu-block { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #e3e6ec; padding-top: 12px; }
 .menu-block h3, #results-box h3 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .block-head { display: flex; align-items: center; justify-content: space-between; }
@@ -282,8 +284,8 @@ body.pad-large #pad-wrap { width: min(94vw, 540px); }
   body.pad-small #pad-wrap { width: min(24vw, 190px); }
   body.pad-large #pad-wrap { width: min(44vw, 340px); }
   #pad-hint { font-size: 12px; }
-  #lobby, #online-menu, #options, #result { justify-content: flex-start; padding-left: max(16px, env(safe-area-inset-left)); }
-  #lobby .card, #online-menu .card, #options .card { max-height: calc(100vh - 70px); width: min(55vw, 380px); }
+  #lobby, #online-menu, #options, #look-menu, #result { justify-content: flex-start; padding-left: max(16px, env(safe-area-inset-left)); }
+  #lobby .card, #online-menu .card, #options .card, #look-menu .card { max-height: calc(100vh - 70px); width: min(55vw, 380px); }
   #result { padding-top: 60px; }
 }
 
@@ -304,5 +306,6 @@ body.pad-large #pad-wrap { width: min(94vw, 540px); }
 #look-preview { width: 112px; height: 112px; flex: none; border-radius: 14px; background: #bfe3f7; }
 #look-pickers { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
 .look-picker { display: grid; grid-template-columns: 4.2em 30px 1fr 30px; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; }
+.look-picker button:disabled { opacity: .35; }
 .look-picker button { width: 30px; height: 30px; padding: 0; font-size: 13px; border-color: #c9cdd6; }
 .look-picker .value { text-align: center; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }

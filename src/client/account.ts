@@ -6,6 +6,7 @@
 // Signed in, the button adds another passkey. Logging out forgets everything on this device.
 // See worker/auth.ts.
 import { browserSupportsWebAuthn, startAuthentication, startRegistration } from '@simplewebauthn/browser';
+import { lookAfterSignIn } from './appearance';
 import { byId } from './dom';
 import {
   becomePlayer, forgetEverything, persist, playerName, save, setPlayerName,
@@ -17,6 +18,7 @@ interface Me {
   hash?: string;
   name?: string;
   passkeys?: number;
+  look?: unknown;
 }
 
 let online = false;
@@ -99,6 +101,8 @@ async function createPasskey(): Promise<string> {
   const response = await startRegistration({ optionsJSON });
   const out = await post<{ hash: string; name: string }>('register/verify', { response });
   becomePlayer(save.player, out.hash, out.name || name);
+  // A first save keeps the look you're wearing as your own.
+  if (!adding) lookAfterSignIn(null);
   noExistingPasskey = false;
   return adding ? 'Added another passkey for your player.' : 'Saved. Your player now has a passkey.';
 }
@@ -107,11 +111,12 @@ async function createPasskey(): Promise<string> {
 async function useExistingPasskey(): Promise<string> {
   const optionsJSON = await post<Parameters<typeof startAuthentication>[0]['optionsJSON']>('login/options');
   const response = await startAuthentication({ optionsJSON });
-  const out = await post<{ player: string; hash: string; name: string }>(
+  const out = await post<{ player: string; hash: string; name: string; look: unknown }>(
     'login/verify',
     { response, localPlayer: save.player },
   );
   becomePlayer(out.player, out.hash, out.name);
+  lookAfterSignIn(out.look);
   return `Saved. You’re playing as ${out.name || 'your player'} again.`;
 }
 
@@ -150,6 +155,7 @@ async function refresh(): Promise<void> {
     const me = await res.json() as Me;
     if (me.signedIn && me.player && me.hash) {
       becomePlayer(me.player, me.hash, playerName() ? '' : me.name ?? '');
+      lookAfterSignIn(me.look);
     } else if (save.signedIn) {
       save.signedIn = false;
       persist();

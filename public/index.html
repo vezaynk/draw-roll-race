@@ -31,6 +31,7 @@
     <button id="start-daily" type="button" class="primary" title="The same course for everyone today, with a leaderboard"><span aria-hidden="true">🏆</span>Daily course</button>
     <button id="start-tutorial" type="button" title="Learn which shapes beat each obstacle"><span aria-hidden="true">🎓</span>Tutorial</button>
     <button id="start-online" type="button" title="Create or join a room" hidden><span aria-hidden="true">👥</span>Play with friends<small>Online</small></button>
+    <button id="start-look" type="button" title="Hair, hats, eyes and glasses for your runner"><span aria-hidden="true">🎨</span>Customize</button>
   </nav>
   <p id="pad-hint">Draw from the shoulder or hip to give your runner arms or legs</p>
   <canvas id="pad" width="320" height="200" aria-label="Drawing pad"></canvas>
@@ -75,16 +76,6 @@
       </div>
       <p id="account-note" class="menu-note" role="status"></p>
     </section>
-    <section class="menu-block" aria-labelledby="look-title">
-      <div class="block-head">
-        <h3 id="look-title">Look</h3>
-        <button id="look-shuffle" type="button" class="quiet">Shuffle</button>
-      </div>
-      <div class="look-row">
-        <canvas id="look-preview" width="112" height="112" aria-label="Your runner's look"></canvas>
-        <div id="look-pickers"></div>
-      </div>
-    </section>
     <section class="menu-block" aria-labelledby="feel-title">
       <h3 id="feel-title">Sound and screen</h3>
       <label class="check"><input id="opt-sound" type="checkbox"> Sound effects</label>
@@ -96,6 +87,29 @@
           <option value="small">Small</option><option value="normal">Normal</option><option value="large">Large</option>
         </select>
       </div>
+    </section>
+  </div>
+</div>
+
+<div id="look-menu" hidden>
+  <div class="card">
+    <div class="lobby-head">
+      <h2>Customize</h2>
+      <button id="look-close" type="button" class="quiet">Done</button>
+    </div>
+    <div class="look-row">
+      <canvas id="look-preview" width="112" height="112" aria-label="Your runner's look"></canvas>
+      <div id="look-pickers"></div>
+    </div>
+    <div id="look-actions" class="btn-row">
+      <button id="look-shuffle" type="button" class="quiet">Shuffle</button>
+    </div>
+    <section id="look-locked" class="menu-block" hidden>
+      <p class="menu-note">Save your player with a passkey to choose your look. Until then, you get a new random look every round.</p>
+      <div class="btn-row">
+        <button id="look-save" type="button" class="primary">Save with a passkey</button>
+      </div>
+      <p id="look-note" class="menu-note" role="status"></p>
     </section>
   </div>
 </div>

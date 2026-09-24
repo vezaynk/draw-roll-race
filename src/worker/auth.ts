@@ -5,6 +5,7 @@
 //   POST /api/auth/login/options                       start signing in with a passkey
 //   POST /api/auth/login/verify     { response, localPlayer }  finish it: sends back the player ID
 //   GET  /api/auth/me                                  who is signed in (with their player ID)
+//   POST /api/auth/look             { look }           save the signed-in player's look
 //   POST /api/auth/logout
 //
 // The game offers one button, "Save with a passkey" (client/account.ts): it uses a passkey the
@@ -19,6 +20,7 @@ import {
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server';
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { PLAYER_RE, playerHash } from '../shared/identity';
+import { sanitizeLook } from '../shared/look';
 import ensureSchema from './db';
 import type { Env } from './env';
 import { allowed, cleanText, json, logError } from './http';
@@ -237,6 +239,7 @@ async function loginVerify(request: Request, db: D1Database): Promise<Response> 
     player: passkey.player,
     hash: player?.hash ?? await playerHash(passkey.player),
     name: player?.name ?? '',
+    look: savedLook(player?.look ?? null),
   }), cookie);
 }
 
@@ -247,8 +250,33 @@ async function me(request: Request, db: D1Database): Promise<Response> {
   const count = await db.prepare('SELECT COUNT(*) AS n FROM passkeys WHERE player = ?1')
     .bind(player.id).first<{ n: number }>();
   return json({
-    signedIn: true, player: player.id, hash: player.hash, name: player.name, passkeys: count?.n ?? 0,
+    signedIn: true,
+    player: player.id,
+    hash: player.hash,
+    name: player.name,
+    passkeys: count?.n ?? 0,
+    look: savedLook(player.look),
   });
+}
+
+/** A stored look, checked (null if none is saved yet). */
+function savedLook(stored: string | null) {
+  if (!stored) return null;
+  try {
+    return sanitizeLook(JSON.parse(stored));
+  } catch {
+    return null;
+  }
+}
+
+/** Saves the signed-in player's look (customising your runner needs a saved player). */
+async function saveLook(request: Request, db: D1Database): Promise<Response> {
+  const id = await sessionPlayer(db, request);
+  if (!id) return json({ error: 'Save your player with a passkey to customise your runner.' }, 401);
+  const input = await body<{ look?: unknown }>(request);
+  const look = sanitizeLook(input?.look);
+  await db.prepare('UPDATE players SET look = ?1 WHERE id = ?2').bind(JSON.stringify(look), id).run();
+  return json({ ok: true, look });
 }
 
 async function logout(request: Request, db: D1Database): Promise<Response> {
@@ -262,6 +290,7 @@ const ROUTES: Record<string, Route> = {
   'POST login/options': loginOptions,
   'POST login/verify': loginVerify,
   'GET me': me,
+  'POST look': saveLook,
   'POST logout': logout,
 };
 

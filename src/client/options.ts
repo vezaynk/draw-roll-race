@@ -1,6 +1,5 @@
 // The Options panel (⚙): your player, sound, vibration, ghost and drawing-pad size.
 import { byId } from './dom';
-import { showLookPicker } from './lookPicker';
 import { resize } from './render/scene';
 import { state } from './state';
 import { persist, save } from './storage';
@@ -28,7 +27,6 @@ function openOptions(): void {
   byId<HTMLInputElement>('opt-ghost').checked = save.ghost;
   byId<HTMLSelectElement>('opt-pad').value = save.pad;
   panel().hidden = false;
-  showLookPicker();
 }
 
 type Toggle = 'sound' | 'vibrate' | 'ghost';

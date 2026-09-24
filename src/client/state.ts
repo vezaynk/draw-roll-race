@@ -3,6 +3,8 @@
 import buildCourse from '../shared/course/build';
 import type CpuRacer from '../shared/cpu/racer';
 import { emptyLimbs } from '../shared/limbs';
+import { randomLook } from '../shared/look';
+import type { Look } from '../shared/look';
 import type {
   Course, CourseSection, LimbKind, Limbs, Point, Runner, SectionType,
 } from '../shared/types';
@@ -14,6 +16,8 @@ export interface GameState {
   course: Course;
   limbs: Limbs;
   player: Runner | null;
+  /** The look your runner wears this round (see appearance.ts). */
+  look: Look;
   /** The CPU racing with you in the tutorial (the only place with a CPU). */
   cpu: CpuRacer | null;
   /** When the CPU finished (null until then). */
@@ -41,6 +45,7 @@ export const state: GameState = {
   course: buildCourse(save.stage),
   limbs: emptyLimbs(),
   player: null,
+  look: save.signedIn ? save.look : randomLook(),
   cpu: null,
   cpuTime: null,
   ghosts: [],

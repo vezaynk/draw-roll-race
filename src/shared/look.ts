@@ -64,3 +64,14 @@ export function sanitizeLook(value: unknown): Look {
     hair: pick('hair'), hat: pick('hat'), eyes: pick('eyes'), glasses: pick('glasses'),
   };
 }
+
+/** A random look (for players who haven't saved theirs: they get a new one each round). */
+export function randomLook(random: () => number = Math.random): Look {
+  const any = <K extends LookPart>(part: K): Look[K] => {
+    const options = LOOK_OPTIONS[part];
+    return options[Math.floor(random() * options.length)];
+  };
+  return {
+    hair: any('hair'), hat: any('hat'), eyes: any('eyes'), glasses: any('glasses'),
+  };
+}

@@ -17,7 +17,7 @@ import { drawBubble, labelSpot } from '../render/draw';
 import { render } from '../render/scene';
 import { spawnShards } from '../render/shards';
 import { hooks, state } from '../state';
-import { playerName, save, setPlayerName } from '../storage';
+import { playerName, setPlayerName } from '../storage';
 import RoomConnection from './connection';
 import type { RoomSetup } from './connection';
 import {
@@ -167,7 +167,7 @@ function onWelcome(m: Extract<ServerMessage, { type: 'welcome' }>): void {
   // Test runs pick the short test course for ready-up races too.
   if (isHost() && Number.isInteger(testStage)) send({ type: 'settings', nextStage: testStage });
   if (hasLimbs(state.limbs)) send({ type: 'limbs', limbs: encodeLimbs(state.limbs) });
-  send({ type: 'look', look: save.look });
+  send({ type: 'look', look: state.look });
   const stillRacing = m.resumed && m.room.phase === 'racing' && net.racingIn && net.raceId === m.room.raceId
     && m.room.participants.includes(m.you) && !m.room.results.some((r) => r.id === m.you);
   if (stillRacing) {
@@ -433,7 +433,7 @@ function installHooks(): void {
     refreshLobby();
   };
   // In a room, Exit gives up any race you are in and leaves the room.
-  hooks.onLook = () => send({ type: 'look', look: save.look });
+  hooks.onLook = () => send({ type: 'look', look: state.look });
   hooks.onReturnToLobby = () => {
     showLobby(true);
     refreshLobby();

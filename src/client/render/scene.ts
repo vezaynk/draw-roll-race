@@ -3,7 +3,6 @@ import { groundAt } from '../../shared/course/queries';
 import { byId } from '../dom';
 import { drawGhost } from '../ghost';
 import { hooks, state } from '../state';
-import { save } from '../storage';
 import { drawRunner } from './draw';
 import {
   drawFluids, drawGround, drawObstacles, drawPosts,
@@ -93,7 +92,7 @@ export function render(): void {
   if (state.racing) state.ghosts.forEach((ghost) => drawGhost(ctx, ghost, state.time));
   if (state.cpu) drawRunner(ctx, state.cpu.runner, 0.85);
   hooks.drawWorld?.(ctx);
-  if (state.player) drawRunner(ctx, state.player, 1, save.look);
+  if (state.player) drawRunner(ctx, state.player, 1, state.look);
   drawShards(ctx);
   drawFluids(ctx, c, view);
   ctx.restore();
