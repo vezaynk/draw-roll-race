@@ -1,7 +1,5 @@
-// The Options panel (⚙): daily course, tutorial, solo opponents, sound, vibration, ghost and
-// drawing-pad size.
+// The Options panel (⚙): solo opponents, sound, vibration, ghost and drawing-pad size.
 import { isDifficulty } from '../shared/cpu/personality';
-import { enterDaily, enterTutorial } from './controls';
 import { byId } from './dom';
 import { resize } from './render/scene';
 import { state } from './state';
@@ -31,9 +29,6 @@ function openOptions(): void {
   byId<HTMLInputElement>('opt-vibrate').checked = save.vibrate;
   byId<HTMLInputElement>('opt-ghost').checked = save.ghost;
   byId<HTMLSelectElement>('opt-pad').value = save.pad;
-  const solo = state.mode === 'solo';
-  byId('daily-btn').hidden = !solo;
-  byId('tutorial-btn').hidden = !solo;
   panel().hidden = false;
 }
 
@@ -72,13 +67,5 @@ export default function initOptions(): void {
   bindToggle('opt-sound', 'sound');
   bindToggle('opt-vibrate', 'vibrate');
   bindToggle('opt-ghost', 'ghost');
-  byId('daily-btn').addEventListener('click', () => {
-    closeOptions();
-    enterDaily();
-  });
-  byId('tutorial-btn').addEventListener('click', () => {
-    closeOptions();
-    enterTutorial();
-  });
   applySettings();
 }

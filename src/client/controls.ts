@@ -1,12 +1,12 @@
-// Buttons around the race: the stage name, restart, the results card, and entering the daily
-// course or tutorial.
+// Buttons around the race: the stage name, Exit, the results card, and the start buttons for the
+// daily course and the tutorial.
 import { TUTORIAL, dailyStage, today } from '../shared/course/stages';
 import TIPS from '../shared/course/tips';
 import { hasLimbs } from '../shared/limbs';
 import { loadLeader } from './daily';
 import { byId } from './dom';
 import { DEFAULT_HINT, showHint, toast } from './hud';
-import { resetStage, startRace } from './race';
+import { resetStage, startRace, stopRace } from './race';
 import type { NextAction } from './results';
 import { hooks, state } from './state';
 import { persist, save } from './storage';
@@ -37,6 +37,27 @@ export function enterTutorial(): void {
   showHint(TIPS.bumps, 0);
 }
 
+/** Exit: stops the race (or leaves the room) and goes back to the start screen. */
+function exitToStart(): void {
+  if (state.mode === 'online') {
+    hooks.onExit?.();
+    return;
+  }
+  stopRace();
+  // The daily course and the tutorial start again with their own hints.
+  if (state.daily) {
+    enterDaily();
+    return;
+  }
+  if (state.stage === TUTORIAL) {
+    enterTutorial();
+    return;
+  }
+  hideResults();
+  resetStage();
+  showHint(DEFAULT_HINT, 0);
+}
+
 /** The tutorial, then Stage 1 up to the furthest unlocked stage. */
 function stageCycle(): number[] {
   return [TUTORIAL, ...Array.from({ length: save.unlocked + 1 }, (_, i) => i)];
@@ -63,16 +84,9 @@ export default function initControls(): void {
     if (!hasLimbs(state.limbs)) showHint(DEFAULT_HINT, 0);
   });
 
-  byId('restart-btn').addEventListener('click', () => {
-    if (state.mode === 'online') {
-      hooks.onRestart?.();
-      return;
-    }
-    hideResults();
-    resetStage();
-    if (hasLimbs(state.limbs)) startRace();
-    else showHint(DEFAULT_HINT, 0);
-  });
+  byId('start-daily').addEventListener('click', enterDaily);
+  byId('start-tutorial').addEventListener('click', enterTutorial);
+  byId('exit-btn').addEventListener('click', exitToStart);
 
   byId('again-btn').addEventListener('click', () => {
     hideResults();

@@ -7,14 +7,14 @@ import {
 import type { RoomInfo, ServerMessage } from '../../shared/protocol';
 import { byId, ordinal } from '../dom';
 import {
-  DEFAULT_HINT, showHint, stageName, toast, updateHud, updateStageButton,
+  DEFAULT_HINT, showHint, stageName, toast, updateControls, updateHud,
 } from '../hud';
 import { resetStage, startRace, stopRace } from '../race';
 import { drawBubble, labelSpot } from '../render/draw';
 import { render } from '../render/scene';
 import { spawnShards } from '../render/shards';
 import { hooks, state } from '../state';
-import { playerName, setPlayerName } from '../storage';
+import { playerName, save, setPlayerName } from '../storage';
 import RoomConnection from './connection';
 import type { RoomSetup } from './connection';
 import {
@@ -338,14 +338,6 @@ function syncStageSelect(): void {
   if ([...select.options].some((o) => o.value === value)) select.value = value;
 }
 
-function setRestartButton(online: boolean): void {
-  const button = byId('restart-btn');
-  const label = online ? 'Give up this race' : 'Restart stage';
-  button.title = label;
-  button.setAttribute('aria-label', label);
-  button.textContent = online ? '✕' : '↻';
-}
-
 function join(code: string, setup?: RoomSetup): void {
   closeMenu();
   net.conn?.close();
@@ -360,9 +352,8 @@ function join(code: string, setup?: RoomSetup): void {
   window.history.replaceState(null, '', `?room=${code}${suffix}`);
   byId('room-code').textContent = code;
   byId('room-name').textContent = `Room ${code}`;
-  byId('online-btn').hidden = true;
-  setRestartButton(true);
-  updateStageButton();
+  byId('exit-btn').title = 'Leave the room';
+  updateControls();
   state.stage = 0;
   resetStage();
   setStatus('Connecting…');
@@ -383,12 +374,13 @@ function leave(): void {
   cancelAnimationFrame(net.idleRaf);
   state.mode = 'solo';
   window.history.replaceState(null, '', window.location.pathname);
-  byId('online-btn').hidden = false;
-  setRestartButton(false);
+  byId('exit-btn').title = 'Back to the start screen';
   showLobby(false);
   stopRace();
+  // Back to the start screen on your own stage.
+  state.daily = null;
+  state.stage = save.stage;
   resetStage();
-  updateStageButton();
   showHint(DEFAULT_HINT, 0);
 }
 
@@ -417,17 +409,10 @@ function installHooks(): void {
     startIdleLoop();
     refreshLobby();
   };
-  // In a room, ✕ means "give up": a shared race cannot be restarted.
-  hooks.onRestart = () => {
-    if (!net.racingIn) return;
-    send({ type: 'giveup', r: net.raceId });
-    net.racingIn = false;
-    stopRace();
-    state.finished = true;
-    setStatus('You gave up. Waiting for the others…');
-    showLobby(true);
-    startIdleLoop();
-    refreshLobby();
+  // In a room, Exit gives up any race you are in and leaves the room.
+  hooks.onExit = () => {
+    if (net.racingIn) send({ type: 'giveup', r: net.raceId });
+    leave();
   };
   // Watching: the camera follows the racer you picked, or whoever is in front.
   hooks.focus = () => {
@@ -520,7 +505,7 @@ export default async function initOnline(): Promise<void> {
   installHooks();
   bindLobbyButtons();
   initMenu({ join, cancel: () => {} });
-  byId('online-btn').addEventListener('click', () => {
+  byId('start-online').addEventListener('click', () => {
     if (net.conn) return;
     stopRace();
     byId('result').hidden = true;
@@ -533,7 +518,7 @@ export default async function initOnline(): Promise<void> {
   } catch {
     return;
   }
-  byId('online-btn').hidden = false;
+  byId('start-online').hidden = false;
   const code = (params.get('room') ?? '').toUpperCase();
   if (CODE_RE.test(code)) join(code);
 }

@@ -46,12 +46,22 @@ export function stageName(n: number): string {
   return `Endless ${n - STAGES.length + 1}`;
 }
 
-/** In solo play, when no race is running, tap the stage name to switch stages. */
-export function updateStageButton(): void {
+/** The start screen: solo play with no race running and no results showing. */
+export function atStart(): boolean {
+  return state.mode === 'solo' && !state.racing && !state.finished;
+}
+
+/**
+ * Buttons that follow the game's state. In solo play, when no race is running, tap the stage
+ * name to switch stages. The start buttons show on the start screen, Exit everywhere else.
+ */
+export function updateControls(): void {
   const button = byId<HTMLButtonElement>('stage-label');
   const can = state.mode === 'solo' && !state.racing;
   button.disabled = !can;
   button.classList.toggle('switchable', can);
+  byId('start-menu').hidden = !atStart();
+  byId('exit-btn').hidden = atStart();
 }
 
 interface Dots {
@@ -77,7 +87,7 @@ export function buildProgress(): void {
   dots = { ghosts: [], player: el('div', 'dot player'), cpus: [] };
   progress.append(dots.player, el('span', 'flag', '🏁'));
   byId('stage-label').textContent = stageName(state.stage);
-  updateStageButton();
+  updateControls();
 }
 
 function showTips(px: number): void {

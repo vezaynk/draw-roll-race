@@ -15,13 +15,18 @@
   <div class="row">
     <button id="stage-label" type="button" title="Switch stage">Stage 1</button>
     <span id="section-label"></span>
-    <span class="right"><button id="menu-btn" type="button" aria-label="Options" title="Options">⚙</button><button id="online-btn" type="button" hidden>Online</button><span id="timer">0.00 s</span><button id="restart-btn" type="button" aria-label="Restart stage" title="Restart stage">↻</button></span>
+    <span class="right"><button id="menu-btn" type="button" aria-label="Options" title="Options">⚙</button><span id="timer">0.00 s</span><button id="exit-btn" type="button" title="Back to the start screen" hidden>Exit</button></span>
   </div>
 </header>
 
 <div id="toast" role="status" aria-live="polite"></div>
 
 <section id="pad-wrap">
+  <nav id="start-menu" aria-label="Play">
+    <button id="start-daily" type="button" class="primary" title="The same course for everyone today, with a leaderboard"><span aria-hidden="true">🏆</span>Daily course</button>
+    <button id="start-tutorial" type="button" title="Learn which shapes beat each obstacle"><span aria-hidden="true">🎓</span>Tutorial</button>
+    <button id="start-online" type="button" title="Create or join a room" hidden><span aria-hidden="true">👥</span>Play with friends<small>Online</small></button>
+  </nav>
   <p id="pad-hint">Draw from the shoulder or hip to give your runner arms or legs</p>
   <canvas id="pad" width="320" height="200" aria-label="Drawing pad"></canvas>
 </section>
@@ -49,14 +54,6 @@
       <h2>Options</h2>
       <button id="options-close" type="button" class="quiet">Done</button>
     </div>
-    <section class="menu-block" aria-labelledby="play-title">
-      <h3 id="play-title">Play</h3>
-      <div class="btn-row">
-        <button id="daily-btn" type="button" class="primary">Today's daily course</button>
-        <button id="tutorial-btn" type="button">Tutorial</button>
-      </div>
-      <p class="menu-note">The daily course is the same for everyone today, with a leaderboard.</p>
-    </section>
     <section class="menu-block" aria-labelledby="cpu-title">
       <h3 id="cpu-title">Solo opponents</h3>
       <div class="field-row">
