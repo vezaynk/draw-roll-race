@@ -36,14 +36,17 @@ npm test           # type check, unit tests, CPU course simulation, browser test
   Elsewhere, a tip appears the first time you meet each obstacle.
 - There are three fixed stages. After the last one, Endless mode generates new
   courses that get longer and harder.
-- **↻** restarts the current course. When no race is running, tap the stage
-  name to switch between the tutorial and the stages you have unlocked.
+- Before a race, buttons above the drawing pad open the **Daily course**, the
+  **Tutorial** and **Play with friends** (online rooms). Tap the stage name to
+  switch between the tutorial and the stages you have unlocked.
+- **Exit** stops the race and goes back to the start screen.
+
+The **Daily course** is the same generated course for everyone each day (UTC),
+with a leaderboard of the fastest runs. The day's leader races with you as a
+gold ghost.
 
 ## Options (⚙)
 
-- **Today's daily course:** the same generated course for everyone each day
-  (UTC), with a leaderboard of the fastest runs. The day's leader races with
-  you as a gold ghost.
 - **Solo opponents:** 0–7 CPUs at easy, normal, hard or mixed difficulty.
 - **Race your best run:** your fastest run on each course comes back as a
   see-through "ghost" to beat.
@@ -54,7 +57,8 @@ Progress, best times, ghosts and options are saved in your browser.
 
 ## Racing online
 
-When the game is served by the Worker, an **Online** button appears. You can:
+When the game is served by the Worker, a **Play with friends** button appears on the start
+screen. You can:
 
 - **Create a room.** Give it a name and choose **Public** (listed for anyone)
   or **Private** (joinable only with the invite link or the 5-character code).
@@ -67,11 +71,13 @@ slots with CPUs and picks the course (Stage 1–3, a random generated course, or
 the same course again). The host can start the race, or everyone can tap
 **I'm ready**: when every person in the room is ready, the race starts by
 itself. Everyone gets a 3-2-1 countdown. Other racers appear as see-through runners
-with their names above them. When every person has finished or given up (✕),
+with their names above them. When every person has finished or given up,
 CPUs still racing get up to 10 more seconds, then the results appear. Anyone
 who joins mid-race watches and joins the next one; the camera follows the
 leader, or tap **Watching … · next** to follow someone else. If your
 connection drops, you rejoin within a minute as the same racer and keep racing.
+**Exit** or **Leave room** takes you back to the start screen; leaving during a
+race gives it up.
 
 Six quick emotes (👋 😂 😮 🔥 👏 😭) pop up as bubbles over your runner, or as a
 message in the lobby.

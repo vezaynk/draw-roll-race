@@ -118,8 +118,8 @@ export interface RoomOptions {
 /** Creates a room through the Online menu. Returns its code. */
 export async function createRoom(page: Page, { name = '', isPublic = true, testStage }: RoomOptions = {}): Promise<string> {
   await page.goto(BASE + (testStage !== undefined ? `?teststage=${testStage}` : ''));
-  await page.waitForSelector('#online-btn:not([hidden])');
-  await page.click('#online-btn');
+  await page.waitForSelector('#start-online:not([hidden])');
+  await page.click('#start-online');
   if (name) await page.fill('#new-room-name', name);
   await page.check(`input[name="visibility"][value="${isPublic ? 'public' : 'private'}"]`);
   await page.click('#create-btn');

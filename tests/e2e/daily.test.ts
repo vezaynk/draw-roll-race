@@ -113,8 +113,7 @@ test('daily runs are timed by the server replaying them', async () => {
 test('the daily course shows the leader as a ghost', async () => {
   const p = await newPlayer(browser, 'Jo', { width: 1280, height: 800 });
   await p.goto(BASE);
-  await p.click('#menu-btn');
-  await p.click('#daily-btn');
+  await p.click('#start-daily');
   assert.match(await text(p, '#stage-label'), /Daily course/);
   await waitForText(p, '#pad-hint', /leader/i, 10000);
   await drawWheel(p);
