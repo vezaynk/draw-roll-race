@@ -257,6 +257,8 @@ button:disabled { opacity: .5; cursor: default; }
 #lb-list .rk { width: 2.2em; color: var(--muted); }
 #lb-list .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #lb-note { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+#lb-note.warn { color: #b3261e; }
+#save-score { margin-top: 8px; width: 100%; }
 #lb-note.checking::before {
   content: ""; display: inline-block; vertical-align: -1px; margin-right: 6px;
   width: 10px; height: 10px; border-radius: 50%;

@@ -79,6 +79,7 @@ export default function showResults(): void {
   persist();
 
   byId('leaderboard').hidden = true;
+  byId('save-score').hidden = true;
   if (state.daily && state.recording) submitDaily(state.daily.day, state.time, state.recording);
   byId('result').hidden = false;
   sfx(win ? 'win' : 'lose');

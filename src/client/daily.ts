@@ -3,6 +3,7 @@
 import buildCourse from '../shared/course/build';
 import { dailyStage } from '../shared/course/stages';
 import type { RunInput } from '../shared/replay';
+import { canSave, saveWithPasskey } from './account';
 import { replayGhost } from './ghost';
 import type { Ghost, Recording } from './ghost';
 import { byId, el, ordinal } from './dom';
@@ -59,8 +60,10 @@ export function leaderGhost(day: string): Ghost | null {
   };
 }
 
-function note(text: string): void {
-  byId('lb-note').textContent = text;
+function note(text: string, warning = false): void {
+  const el = byId('lb-note');
+  el.textContent = text;
+  el.classList.toggle('warn', warning);
 }
 
 /** A spinner before the note while the server checks your run. */
@@ -147,8 +150,31 @@ export default async function submitDaily(
     }
     // You may have taken the lead (or someone else has since).
     if (res.ok) await loadLeader(day);
+    // Not saved yet: offer to keep this score with a passkey.
+    if (res.ok && canSave()) {
+      const button = byId('save-score');
+      button.hidden = false;
+      button.dataset.day = day;
+    }
   } catch {
     checking(false);
     note('The leaderboard needs the online version of the game.');
   }
+}
+
+/** "Save your score": saves (or finds) this player's passkey, then shows the board as that player. */
+export function initSaveScore(): void {
+  const button = byId<HTMLButtonElement>('save-score');
+  button.addEventListener('click', async () => {
+    const { day } = button.dataset;
+    if (!day) return;
+    button.disabled = true;
+    const saved = await saveWithPasskey((text, warning) => note(text, warning));
+    button.disabled = false;
+    if (!saved) return;
+    button.hidden = true;
+    const message = byId('lb-note').textContent ?? '';
+    await showLeaderboard(day, true);
+    note(`${message} ${byId('lb-note').textContent}`.trim());
+  });
 }

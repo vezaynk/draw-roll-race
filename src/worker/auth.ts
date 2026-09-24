@@ -7,9 +7,11 @@
 //   GET  /api/auth/me                                  who is signed in (with their player ID)
 //   POST /api/auth/logout
 //
-// A player's ID is only ever sent to a browser signed in as them. Challenges are single-use and
-// expire after five minutes. Signing in on a device that had its own anonymous player moves that
-// player's daily scores to the signed-in one (keeping the better time for each day).
+// The game offers one button, "Save with a passkey" (client/account.ts): it uses a passkey the
+// browser already has if there is one (login), or else makes one for this device's player
+// (register). A player's ID is only ever sent to a browser signed in as them. Challenges are
+// single-use and expire after five minutes. Using an existing passkey on a device that had its
+// own anonymous player remaps that player into the passkey's (see mergeScores).
 import {
   generateAuthenticationOptions, generateRegistrationOptions,
   verifyAuthenticationResponse, verifyRegistrationResponse,
@@ -161,7 +163,10 @@ async function loginOptions(request: Request, db: D1Database): Promise<Response>
   return json(options);
 }
 
-/** Moves an anonymous player's daily scores to another player, keeping the better time per day. */
+/**
+ * Remaps an anonymous player to another: their daily scores move over (keeping the better time
+ * per day), a missing name is filled in, and the anonymous player is removed.
+ */
 async function mergeScores(db: D1Database, from: string, to: string): Promise<void> {
   const target = await getPlayer(db, to);
   const theirs = await db.prepare('SELECT day, time FROM daily_scores WHERE player = ?1')
@@ -180,6 +185,9 @@ async function mergeScores(db: D1Database, from: string, to: string): Promise<vo
   });
   statements.push(
     db.prepare('DELETE FROM daily_scores WHERE player = ?1').bind(from),
+    // A player without a name takes the anonymous player's.
+    db.prepare(`UPDATE players SET name = (SELECT name FROM players WHERE id = ?1)
+      WHERE id = ?2 AND name = ''`).bind(from, to),
     db.prepare('DELETE FROM players WHERE id = ?1 AND claimed = 0').bind(from),
   );
   await db.batch(statements);

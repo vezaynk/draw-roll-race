@@ -3,6 +3,7 @@ import buildCourse from '../shared/course/build';
 import { RunReplay } from '../shared/replay';
 import initAccount from './account';
 import initControls, { enterDaily } from './controls';
+import submitDaily, { initSaveScore } from './daily';
 import { buildProgress, updateHud } from './hud';
 import initOnline from './online';
 import initOptions from './options';
@@ -16,7 +17,10 @@ import { firstVisit } from './storage';
 declare global {
   interface Window {
     /** For the browser tests and debugging in the console. */
-    drr: { state: typeof state; buildCourse: typeof buildCourse; RunReplay: typeof RunReplay };
+    drr: {
+      state: typeof state; buildCourse: typeof buildCourse; RunReplay: typeof RunReplay;
+      submitDaily: typeof submitDaily;
+    };
   }
 }
 
@@ -32,13 +36,16 @@ function boot(): void {
   initControls();
   initOptions();
   initAccount();
+  initSaveScore();
   initSound();
   resetStage();
   buildProgress();
   updateHud();
   if (!direct) enterDaily(firstVisit ? 'Welcome! New here? Try the Tutorial first. ' : '');
   initOnline();
-  window.drr = { state, buildCourse, RunReplay };
+  window.drr = {
+    state, buildCourse, RunReplay, submitDaily,
+  };
 }
 
 boot();
