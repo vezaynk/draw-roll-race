@@ -73,10 +73,13 @@ export function writeJson(key: string, value: unknown): void {
 function load(): { data: SaveData; firstVisit: boolean } {
   const stored = readJson<Partial<SaveData> | null>(SAVE_KEY, null);
   const data: SaveData = { ...DEFAULTS, ...stored };
-  if (!data.player) data.player = crypto.randomUUID?.() ?? randomId();
+  const newId = !data.player;
+  if (newId) data.player = crypto.randomUUID?.() ?? randomId();
   // For new players, the tutorial comes first in the stage list (the game opens on the daily
   // course; see main.ts).
   if (!stored) data.stage = TUTORIAL;
+  // A new ID is kept at once, so a reload before anything else is saved keeps the same player.
+  if (newId) writeJson(SAVE_KEY, data);
   return { data, firstVisit: !stored };
 }
 

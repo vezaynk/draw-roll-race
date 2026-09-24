@@ -42,6 +42,8 @@ async function device(b: Browser, name: string): Promise<Device> {
     },
   });
   await page.goto(SITE);
+  // The account block appears once the page has checked in with the server.
+  await page.waitForFunction(() => !document.getElementById('account')?.hidden);
   return { page, cdp, authenticatorId };
 }
 
