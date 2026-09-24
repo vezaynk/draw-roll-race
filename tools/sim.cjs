@@ -1,6 +1,6 @@
 // Headless check: can the CPU (and fixed poses) finish every stage?
-// Usage: node tools/sim.js [stageCount]
-require('../src/physics.js');
+// Usage: node tools/sim.cjs [stageCount]
+require('../public/src/physics.js');
 const D = globalThis.DRR;
 
 function run(stage, mode, speed, delay) {

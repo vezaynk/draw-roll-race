@@ -4,7 +4,15 @@ A browser game in which you draw the arms and legs of a stick runner. Each limb
 spins around its joint like a wheel. You race a CPU across obstacle courses and
 can redraw your limbs at any time during a race.
 
-Open `index.html` in a browser. There is no build step and no dependencies.
+Solo play needs no server: open `public/index.html` in a browser.
+
+Races with friends need the Cloudflare Worker in this repo:
+
+```sh
+npm install
+npm run dev      # http://localhost:8787
+npm run deploy   # to your Cloudflare account (run `npx wrangler login` first)
+```
 
 ## How to play
 
@@ -28,12 +36,35 @@ Open `index.html` in a browser. There is no build step and no dependencies.
 - Progress and best times are saved in your browser. When no race is running,
   tap the stage name to replay any stage you've unlocked.
 
+## Racing friends
+
+When the game is served by the Worker, a **Race friends** button appears.
+It creates a room and gives you an invite link to share. Everyone in the room
+draws a runner, and the host picks a course and starts the race. You see the
+other players as see-through runners with their names above them. When
+everyone has finished (or given up with ✕), the results appear and the host
+can start another race. Anyone who joins mid-race watches and joins the next
+race. A room holds up to 8 players, and a race ends after 4 minutes even if
+someone is stuck.
+
+Each browser runs the physics for its own runner and sends its position
+about 15 times a second. The other browsers draw that runner 120 ms behind
+real time so they can smooth its motion. Runners don't collide with each
+other.
+
 ## Code
 
-- `src/physics.js`: course generation, the runner model and the fixed-step
+- `public/src/physics.js`: course generation, the runner model and the fixed-step
   impulse physics (ground and ceiling contacts, friction, conveyor belts, ice,
   water and mud).
-- `src/game.js`: the drawing pad, camera and rendering, the HUD, the CPU and
+- `public/src/game.js`: the drawing pad, camera and rendering, the HUD, the CPU and
   race flow.
-- `tools/sim.js`: headless check that the CPU can finish every stage. Run it
-  with `node tools/sim.js [stages]`.
+- `public/src/online.js`: rooms, the lobby, and drawing other players.
+- `worker/index.js`: the Worker. It serves the game files and the `/api`
+  routes (room codes, the room connection).
+- `worker/room.js`: the `RaceRoom` Durable Object, one per room. It relays
+  positions and drawings, runs the race (lobby, countdown, results) and checks
+  finish times against its own clock. It uses WebSocket hibernation, so an
+  idle room costs nothing.
+- `tools/sim.cjs`: headless check that the CPU can finish every stage. Run it
+  with `node tools/sim.cjs [stages]`.

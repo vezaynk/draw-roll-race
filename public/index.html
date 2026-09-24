@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Draw Roll Race</title>
+<meta name="description" content="Draw arms and legs for your stick runner, then redraw them mid-race to beat every obstacle.">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<canvas id="world" aria-label="Race view"></canvas>
+
+<header id="hud">
+  <div class="bar" id="progress" aria-hidden="true"></div>
+  <div class="row">
+    <button id="stage-label" type="button" title="Switch stage">Stage 1</button>
+    <span id="section-label"></span>
+    <span class="right"><button id="online-btn" type="button" hidden>Race friends</button><span id="timer">0.00 s</span><button id="restart-btn" type="button" aria-label="Restart stage" title="Restart stage">↻</button></span>
+  </div>
+</header>
+
+<div id="toast" role="status" aria-live="polite"></div>
+
+<section id="pad-wrap">
+  <p id="pad-hint">Draw from the shoulder or hip to give your runner arms or legs</p>
+  <canvas id="pad" width="320" height="200" aria-label="Drawing pad"></canvas>
+</section>
+
+<div id="result" hidden>
+  <div class="card">
+    <h2 id="result-title"></h2>
+    <p id="result-stage"></p>
+    <p class="big" id="result-time"></p>
+    <p id="result-cpu"></p>
+    <p id="result-best"></p>
+    <button id="next-btn" type="button" class="primary"></button>
+  </div>
+</div>
+
+<div id="lobby" hidden>
+  <div class="card">
+    <div class="lobby-head">
+      <h2>Room <span id="room-code"></span></h2>
+      <button id="copy-link" type="button">Copy invite link</button>
+    </div>
+    <p id="lobby-status" role="status"></p>
+    <div class="name-row">
+      <label for="my-name">Your name</label>
+      <input id="my-name" type="text" maxlength="16" autocomplete="nickname" spellcheck="false">
+    </div>
+    <ul id="player-list" aria-label="Players"></ul>
+    <section id="results-box" hidden>
+      <h3 id="results-title">Results</h3>
+      <ol id="results-list"></ol>
+    </section>
+    <div id="host-controls" hidden>
+      <label for="stage-select">Course</label>
+      <select id="stage-select">
+        <option value="0">Stage 1</option>
+        <option value="1">Stage 2</option>
+        <option value="2">Stage 3</option>
+        <option value="-1">Random course</option>
+      </select>
+      <button id="start-btn" type="button" class="primary">Start race</button>
+    </div>
+    <button id="leave-btn" type="button" class="quiet">Leave room</button>
+  </div>
+</div>
+
+<script src="src/physics.js"></script>
+<script src="src/game.js"></script>
+<script src="src/online.js"></script>
+</body>
+</html>

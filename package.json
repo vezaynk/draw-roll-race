@@ -1,0 +1,13 @@
+{
+  "name": "draw-roll-race",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "sim": "node tools/sim.cjs"
+  },
+  "devDependencies": {
+    "wrangler": "^4.137.0"
+  }
+}

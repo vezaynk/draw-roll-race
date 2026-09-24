@@ -31,7 +31,11 @@
     cpuPlan: 0, cpuWaitFrom: -1, cpuTime: null,
     racing: false, finished: false, time: 0,
     section: null,
+    mode: 'solo',          // 'solo' or 'online' (online.js switches it)
+    countdownEnd: 0,       // performance.now() when the countdown reaches GO, 0 if none
   };
+  // online.js fills these in; the solo game never needs them.
+  const hooks = {};
 
   // ---------------- Drawing pad ----------------
   const pad = $('pad');
@@ -127,8 +131,14 @@
   function onLimbsChanged() {
     clearTimeout(hintTimer);
     $('pad-hint').classList.add('hidden');
+    if (hooks.onLimbs) hooks.onLimbs(state.limbs);
     if (state.racing) state.player = D.swapLimbs(state.course, state.player, state.limbs);
-    else if (!state.finished) startRace();
+    else if (state.mode === 'online') {
+      // In a room the host starts races; just show the new drawing at the start line.
+      state.player = D.createRunner(state.limbs, COLORS.player, 1);
+      D.settle(state.course, state.player, state.course.startX);
+      render();
+    } else if (!state.finished) startRace();
   }
 
   // ---------------- HUD ----------------
@@ -163,7 +173,9 @@
       const b = state[who];
       const t = b ? Math.max(0, Math.min(1, (b.x - c.startX) / span)) : 0;
       dots[who].style.left = (t * 100) + '%';
+      dots[who].hidden = !b;
     }
+    if (hooks.onHud) hooks.onHud(progress, c.startX, span);
     $('timer').textContent = state.time.toFixed(2) + ' s';
     const px = state.player ? state.player.x : c.startX;
     const sec = c.sections.find(s => px >= s.from && px < s.to) || null;
@@ -185,6 +197,7 @@
   // ---------------- Race flow ----------------
   function resetStage() {
     state.course = D.buildCourse(state.stage);
+    state.countdownEnd = 0;
     state.player = null; state.cpu = null;
     state.racing = false; state.finished = false; state.time = 0; state.cpuTime = null;
     state.section = null;
@@ -198,23 +211,30 @@
     render();
   }
 
-  function startRace() {
+  // opts.cpu: race the CPU (default true). opts.countdownMs: hold everyone still for a 3-2-1 first.
+  function startRace(opts) {
+    opts = opts || {};
     const c = state.course;
     state.player = D.createRunner(state.limbs, COLORS.player, 1);
-    state.cpu = D.createRunner(D.POSES.wheel, COLORS.cpu, CPU_SPEED);
     D.settle(c, state.player, c.startX);
-    D.settle(c, state.cpu, c.startX);
+    state.cpu = null;
+    if (opts.cpu !== false) {
+      state.cpu = D.createRunner(D.POSES.wheel, COLORS.cpu, CPU_SPEED);
+      D.settle(c, state.cpu, c.startX);
+    }
     state.cpuPlan = 0; state.cpuWaitFrom = -1; state.cpuTime = null;
     state.time = 0; state.racing = true; state.finished = false;
+    state.countdownEnd = opts.countdownMs ? performance.now() + opts.countdownMs : 0;
+    countdownShown = null;
     updateStageButton();
-    toast('GO!', 700);
+    if (!state.countdownEnd) toast('GO!', 700);
     lastTs = 0; acc = 0;
     cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(frame);
   }
 
   function stepCpu() {
-    if (state.cpuTime !== null) return;
+    if (!state.cpu || state.cpuTime !== null) return;
     const c = state.course;
     D.step(c, state.cpu, CFG.DT);
     const k = D.planIndex(c, state.cpu.x);
@@ -233,9 +253,23 @@
     }
   }
 
-  let lastTs = 0, acc = 0, rafId = 0;
+  let lastTs = 0, acc = 0, rafId = 0, countdownShown = null;
   function frame(ts) {
     if (!state.racing) return;
+    if (state.countdownEnd) {
+      const left = state.countdownEnd - performance.now();
+      if (left > 0) {
+        const n = Math.min(3, Math.ceil(left / 1000));
+        if (n !== countdownShown) { countdownShown = n; toast(String(n), 900); }
+        render();
+        rafId = requestAnimationFrame(frame);
+        return;
+      }
+      state.countdownEnd = 0;
+      toast('GO!', 700);
+      if (!state.limbs.arm.length && !state.limbs.leg.length) showHint('Draw legs to start moving', 3000);
+      lastTs = 0;
+    }
     if (!lastTs) lastTs = ts;
     acc += Math.min((ts - lastTs) / 1000, 0.05);
     lastTs = ts;
@@ -251,6 +285,7 @@
         state.player.vx = state.player.vy = 0;
       }
     }
+    if (hooks.onFrame) hooks.onFrame();
     updateHud();
     render();
     if (state.racing) rafId = requestAnimationFrame(frame);
@@ -259,6 +294,12 @@
   function finish() {
     state.racing = false; state.finished = true;
     updateStageButton();
+    if (state.mode === 'online') {
+      updateHud();
+      render();
+      if (hooks.onFinish) hooks.onFinish(state.time);
+      return;
+    }
     const win = state.cpuTime === null;
     const title = $('result-title');
     title.textContent = win ? 'You win!' : 'CPU wins…';
@@ -289,7 +330,7 @@
   // Before a race starts (or after it ends), tap the stage name to cycle through unlocked stages.
   function updateStageButton() {
     const btn = $('stage-label');
-    const can = !state.racing && (save.unlocked || 0) > 0;
+    const can = state.mode === 'solo' && !state.racing && (save.unlocked || 0) > 0;
     btn.disabled = !can;
     btn.classList.toggle('switchable', can);
   }
@@ -303,6 +344,7 @@
   });
 
   $('restart-btn').addEventListener('click', () => {
+    if (state.mode === 'online') { if (hooks.onRestart) hooks.onRestart(); return; }
     $('result').hidden = true;
     const drawn = state.limbs.arm.length || state.limbs.leg.length;
     resetStage();
@@ -371,7 +413,7 @@
     const VW = W / zoom, VH = H / zoom;
 
     // camera follows the player, kept high enough that the drawing pad does not hide it
-    const focus = state.player || { x: c.startX, y: D.groundAt(c, c.startX) - 40 };
+    const focus = state.player || (hooks.focus && hooks.focus()) || { x: c.startX, y: D.groundAt(c, c.startX) - 40 };
     const tx = Math.max(0, focus.x - VW * 0.3), ty = focus.y - VH * 0.36;
     if (state.racing) { cam.x += (tx - cam.x) * 0.2; cam.y += (ty - cam.y) * 0.12; }
     else { cam.x = tx; cam.y = ty; }
@@ -475,6 +517,7 @@
     }
 
     if (state.cpu) drawRunner(ctx, state.cpu, 0.85);
+    if (hooks.drawWorld) hooks.drawWorld(ctx);
     if (state.player) drawRunner(ctx, state.player, 1);
 
     // water and mud drawn over the runners
@@ -496,6 +539,17 @@
     }
     ctx.restore();
   }
+
+  // ---------------- API for online.js ----------------
+  window.DRRGame = {
+    state, hooks, COLORS,
+    toast, showHint, render, renderPad, updateHud, drawRunner, stageName,
+    resetStage, startRace, updateStageButton,
+    setStage(n) { state.stage = n; },
+    stopRace() { state.racing = false; state.countdownEnd = 0; cancelAnimationFrame(rafId); updateStageButton(); },
+    hideResult() { $('result').hidden = true; },
+    defaultHint: HINT,
+  };
 
   // ---------------- Boot ----------------
   buildProgress();
