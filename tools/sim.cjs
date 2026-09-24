@@ -1,37 +1,48 @@
-// Headless check: can the CPU (and fixed poses) finish every stage?
-// Usage: node tools/sim.cjs [stageCount]
+// Headless check that CPUs can finish courses: the fixed stages, endless stages and random courses.
+// Usage: node tools/sim.cjs [endlessCount=25] [randomCount=25] [cpusPerDifficulty=3]
 require('../public/src/physics.js');
+require('../public/src/cpu.js');
 const D = globalThis.DRR;
 
-function run(stage, mode, speed, delay) {
+const LIMIT = 240; // seconds: the room's race limit
+
+function race(stage, difficulty, seed) {
   const course = D.buildCourse(stage);
-  let pose = mode === 'cpu' ? 'wheel' : mode;
-  let b = D.createRunner(D.POSES[pose], '#000', speed);
-  D.settle(course, b, course.startX);
-  let t = 0, planK = 0, wait = -1, stuckAt = null, lastX = b.x, lastCheck = 0;
-  while (t < 120) {
-    D.step(course, b, D.CFG.DT); t += D.CFG.DT;
-    if (mode === 'cpu') {
-      const k = D.planIndex(course, b.x);
-      if (k !== planK) {
-        if (wait < 0) wait = t;
-        if (t - wait >= delay) { planK = k; wait = -1; b = D.swapLimbs(course, b, D.POSES[course.plan[k].pose]); }
-      }
-    }
-    if (!isFinite(b.x) || !isFinite(b.y)) return { stage, mode, fail: 'NaN' };
-    if (b.x >= course.finishX) return { stage, mode, time: +t.toFixed(2) };
-    if (t - lastCheck > 8) {
-      if (b.x - lastX < 20) { stuckAt = course.sections.find(s => b.x >= s.from - 60 && b.x <= s.to + 60); break; }
-      lastX = b.x; lastCheck = t;
-    }
+  const cpu = D.createCpu(course, { seed, difficulty, color: '#000' });
+  let t = 0;
+  while (t < LIMIT && cpu.finishTime === null) {
+    cpu.step(D.CFG.DT, t);
+    t += D.CFG.DT;
+    if (!isFinite(cpu.runner.x) || !isFinite(cpu.runner.y)) return { ok: false, why: 'NaN' };
   }
-  return { stage, mode, fail: 'stuck', x: Math.round(b.x), at: stuckAt && stuckAt.label };
+  if (cpu.finishTime !== null) return { ok: true, time: cpu.finishTime };
+  const at = course.sections.find(s => cpu.runner.x >= s.from - 60 && cpu.runner.x <= s.to + 60);
+  return { ok: false, why: 'stuck at ' + (at ? at.label : 'x=' + Math.round(cpu.runner.x)) };
 }
 
-const n = +(process.argv[2] || 4);
-for (let s = +(process.env.FROM || 0); s < n; s++) {
-  console.log('stage', s + 1, D.stageSections(s).join(','));
-  console.log('  ', JSON.stringify(run(s, 'cpu', 1, 0)));
-  console.log('  ', JSON.stringify(run(s, "cpu", +(process.env.CPUS||0.65), 3)));
-  for (const p of ['wheel', 'stilts']) console.log('  ', JSON.stringify(run(s, p, 1, 0)));
+const endless = +(process.argv[2] || 25), random = +(process.argv[3] || 25), per = +(process.argv[4] || 3);
+const stages = [0, 1, 2];
+for (let i = 0; i < endless; i++) stages.push(D.STAGES.length + i);
+for (let i = 0; i < random; i++) stages.push(D.RANDOM_BASE + 7919 * i + 13);
+
+let fails = 0, runs = 0;
+const byDiff = {};
+for (const stage of stages) {
+  const row = [];
+  for (const diff of D.CPU_DIFFICULTIES) {
+    for (let k = 0; k < per; k++) {
+      const res = race(stage, diff, stage * 31 + k);
+      runs++;
+      (byDiff[diff] = byDiff[diff] || []).push(res.ok ? res.time : null);
+      if (!res.ok) { fails++; row.push(diff + '#' + k + ' ' + res.why); }
+    }
+  }
+  const names = D.stageSections(stage).map(s => s.type).join(',');
+  if (row.length) console.log('stage', stage, 'FAIL', row.join('; '), '\n   ', names);
 }
+for (const [d, ts] of Object.entries(byDiff)) {
+  const ok = ts.filter(x => x !== null);
+  console.log(d.padEnd(7), 'finished', ok.length + '/' + ts.length, 'mean', (ok.reduce((a, b) => a + b, 0) / ok.length).toFixed(1) + 's');
+}
+console.log(fails ? fails + ' of ' + runs + ' runs failed' : 'all ' + runs + ' runs finished');
+process.exitCode = fails ? 1 : 0;

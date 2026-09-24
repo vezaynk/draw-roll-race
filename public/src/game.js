@@ -4,8 +4,7 @@
   const D = window.DRR;
   const { CFG, FIG } = D;
 
-  const CPU_SPEED = 0.65;   // CPU limbs spin slower than yours
-  const CPU_REACTION = 3;   // seconds the CPU takes to redraw before a tricky section
+  const SOLO_CPU = 'normal'; // difficulty of the solo CPU (see cpu.js)
   const VIEW_W = 560;       // world units visible across the screen (at most)
 
   const $ = id => document.getElementById(id);
@@ -27,8 +26,8 @@
     stage: save.stage,
     course: D.buildCourse(save.stage),
     limbs: { arm: [], leg: [] },
-    player: null, cpu: null,
-    cpuPlan: 0, cpuWaitFrom: -1, cpuTime: null,
+    player: null, cpu: null, cpuDriver: null,
+    cpuTime: null,
     racing: false, finished: false, time: 0,
     section: null,
     mode: 'solo',          // 'solo' or 'online' (online.js switches it)
@@ -166,7 +165,7 @@
     $('stage-label').textContent = stageName(state.stage);
     updateStageButton();
   }
-  function stageName(n) { return n < D.STAGES.length ? 'Stage ' + (n + 1) + ' / ' + D.STAGES.length : 'Endless ' + (n - D.STAGES.length + 1); }
+  function stageName(n) { return n >= D.RANDOM_BASE ? 'Random course' : n < D.STAGES.length ? 'Stage ' + (n + 1) + ' / ' + D.STAGES.length : 'Endless ' + (n - D.STAGES.length + 1); }
   function updateHud() {
     const c = state.course, span = c.finishX - c.startX;
     for (const who of ['cpu', 'player']) {
@@ -217,12 +216,13 @@
     const c = state.course;
     state.player = D.createRunner(state.limbs, COLORS.player, 1);
     D.settle(c, state.player, c.startX);
-    state.cpu = null;
+    state.cpu = null; state.cpuDriver = null;
     if (opts.cpu !== false) {
-      state.cpu = D.createRunner(D.POSES.wheel, COLORS.cpu, CPU_SPEED);
-      D.settle(c, state.cpu, c.startX);
+      // A new personality every race, so the CPU never plays the same way twice.
+      state.cpuDriver = D.createCpu(c, { seed: (Math.random() * 1e9) | 0, difficulty: SOLO_CPU, color: COLORS.cpu });
+      state.cpu = state.cpuDriver.runner;
     }
-    state.cpuPlan = 0; state.cpuWaitFrom = -1; state.cpuTime = null;
+    state.cpuTime = null;
     state.time = 0; state.racing = true; state.finished = false;
     state.countdownEnd = opts.countdownMs ? performance.now() + opts.countdownMs : 0;
     countdownShown = null;
@@ -234,19 +234,12 @@
   }
 
   function stepCpu() {
-    if (!state.cpu || state.cpuTime !== null) return;
-    const c = state.course;
-    D.step(c, state.cpu, CFG.DT);
-    const k = D.planIndex(c, state.cpu.x);
-    if (k !== state.cpuPlan) {
-      if (state.cpuWaitFrom < 0) state.cpuWaitFrom = state.time;
-      if (state.time - state.cpuWaitFrom >= CPU_REACTION) {
-        state.cpuPlan = k; state.cpuWaitFrom = -1;
-        state.cpu = D.swapLimbs(c, state.cpu, D.POSES[c.plan[k].pose]);
-      }
-    }
-    if (state.cpu.x >= c.finishX) {
-      state.cpuTime = state.time;
+    const drv = state.cpuDriver;
+    if (!drv || state.cpuTime !== null) return;
+    drv.step(CFG.DT, state.time);
+    state.cpu = drv.runner;
+    if (drv.finishTime !== null) {
+      state.cpuTime = drv.finishTime;
       toast('CPU finished!', 1600);
       showHint('CPU finished — keep going, or tap ↻ to restart', 3500);
       $('section-label').textContent = 'CPU finished';
@@ -278,6 +271,7 @@
       state.time += CFG.DT;
       D.step(state.course, state.player, CFG.DT);
       stepCpu();
+      if (hooks.onStep) hooks.onStep(CFG.DT, state.time);
       if (state.player.x >= state.course.finishX) { finish(); break; }
       // Fell out of the world somehow: put the runner back on the ground.
       if (state.player.y > D.groundAt(state.course, state.player.x) + 400) {

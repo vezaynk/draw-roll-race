@@ -15,7 +15,7 @@
   <div class="row">
     <button id="stage-label" type="button" title="Switch stage">Stage 1</button>
     <span id="section-label"></span>
-    <span class="right"><button id="online-btn" type="button" hidden>Race friends</button><span id="timer">0.00 s</span><button id="restart-btn" type="button" aria-label="Restart stage" title="Restart stage">↻</button></span>
+    <span class="right"><button id="online-btn" type="button" hidden>Online</button><span id="timer">0.00 s</span><button id="restart-btn" type="button" aria-label="Restart stage" title="Restart stage">↻</button></span>
   </div>
 </header>
 
@@ -37,18 +37,71 @@
   </div>
 </div>
 
+<div id="online-menu" hidden>
+  <div class="card">
+    <div class="lobby-head">
+      <h2>Race online</h2>
+      <button id="menu-close" type="button" class="quiet">Back to solo</button>
+    </div>
+
+    <section class="menu-block" aria-labelledby="create-title">
+      <h3 id="create-title">Create a room</h3>
+      <div class="field-row">
+        <label for="new-room-name">Name</label>
+        <input id="new-room-name" type="text" maxlength="24" autocomplete="off" spellcheck="false">
+      </div>
+      <div class="seg" role="radiogroup" aria-label="Who can join">
+        <label><input type="radio" name="visibility" value="public" checked><span>Public<small>Listed below for anyone</small></span></label>
+        <label><input type="radio" name="visibility" value="private"><span>Private<small>Invite link or code only</small></span></label>
+      </div>
+      <button id="create-btn" type="button" class="primary">Create room</button>
+    </section>
+
+    <section class="menu-block" aria-labelledby="join-title">
+      <h3 id="join-title">Join with a code</h3>
+      <form id="join-form" class="field-row">
+        <input id="join-code" type="text" maxlength="5" autocomplete="off" spellcheck="false" autocapitalize="characters" aria-label="Room code" placeholder="e.g. K7Q2M">
+        <button type="submit">Join</button>
+      </form>
+      <p id="join-error" class="warn" role="alert"></p>
+    </section>
+
+    <section class="menu-block" aria-labelledby="public-title">
+      <div class="block-head">
+        <h3 id="public-title">Public rooms</h3>
+        <button id="refresh-rooms" type="button" class="quiet">Refresh</button>
+      </div>
+      <ul id="public-rooms"></ul>
+    </section>
+  </div>
+</div>
+
 <div id="lobby" hidden>
   <div class="card">
     <div class="lobby-head">
-      <h2>Room <span id="room-code"></span></h2>
+      <h2 id="room-name">Room</h2>
       <button id="copy-link" type="button">Copy invite link</button>
     </div>
+    <p class="room-meta">
+      <span id="room-visibility" class="badge"></span>
+      <span>Code <span id="room-code"></span></span>
+      <span id="racer-count"></span>
+    </p>
     <p id="lobby-status" role="status"></p>
     <div class="name-row">
       <label for="my-name">Your name</label>
       <input id="my-name" type="text" maxlength="16" autocomplete="nickname" spellcheck="false">
     </div>
-    <ul id="player-list" aria-label="Players"></ul>
+    <ul id="player-list" aria-label="Racers"></ul>
+    <div id="cpu-controls" hidden>
+      <label for="cpu-difficulty">CPU</label>
+      <select id="cpu-difficulty">
+        <option value="easy">Easy</option>
+        <option value="normal" selected>Normal</option>
+        <option value="hard">Hard</option>
+      </select>
+      <button id="add-cpu" type="button">Add CPU</button>
+    </div>
     <section id="results-box" hidden>
       <h3 id="results-title">Results</h3>
       <ol id="results-list"></ol>
@@ -61,6 +114,7 @@
         <option value="2">Stage 3</option>
         <option value="-1">Random course</option>
       </select>
+      <button id="visibility-btn" type="button" class="quiet"></button>
       <button id="start-btn" type="button" class="primary">Start race</button>
     </div>
     <button id="leave-btn" type="button" class="quiet">Leave room</button>
@@ -68,6 +122,7 @@
 </div>
 
 <script src="src/physics.js"></script>
+<script src="src/cpu.js"></script>
 <script src="src/game.js"></script>
 <script src="src/online.js"></script>
 </body>

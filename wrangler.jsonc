@@ -9,8 +9,14 @@
     "run_worker_first": ["/api/*"]
   },
   "durable_objects": {
-    "bindings": [{ "name": "ROOMS", "class_name": "RaceRoom" }]
+    "bindings": [
+      { "name": "ROOMS", "class_name": "RaceRoom" },
+      { "name": "DIRECTORY", "class_name": "Directory" }
+    ]
   },
-  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["RaceRoom"] }],
+  "migrations": [
+    { "tag": "v1", "new_sqlite_classes": ["RaceRoom"] },
+    { "tag": "v2", "new_sqlite_classes": ["Directory"] }
+  ],
   "observability": { "enabled": true }
 }

@@ -36,21 +36,50 @@ npm run deploy   # to your Cloudflare account (run `npx wrangler login` first)
 - Progress and best times are saved in your browser. When no race is running,
   tap the stage name to replay any stage you've unlocked.
 
-## Racing friends
+## Racing online
 
-When the game is served by the Worker, a **Race friends** button appears.
-It creates a room and gives you an invite link to share. Everyone in the room
-draws a runner, and the host picks a course and starts the race. You see the
-other players as see-through runners with their names above them. When
-everyone has finished (or given up with ✕), the results appear and the host
-can start another race. Anyone who joins mid-race watches and joins the next
-race. A room holds up to 8 players, and a race ends after 4 minutes even if
-someone is stuck.
+When the game is served by the Worker, an **Online** button appears. It opens
+a menu where you can:
+
+- **Create a room.** Give it a name and choose **Public** (listed for anyone)
+  or **Private** (joinable only with the invite link or the 5-character code).
+  The host can switch between the two later.
+- **Join with a code** that a friend gave you.
+- **Browse public rooms** and join one. The list refreshes every few seconds.
+
+A room holds up to 8 racers, people and CPUs combined. The host can fill
+open slots with CPUs at easy, normal or hard, and remove them again. If
+someone joins a room that is full because of CPUs, a CPU makes way for them.
+
+The host picks the course (Stage 1–3 or a random generated course) and starts
+the race. Everyone gets a 3-2-1 countdown. You see the other racers as
+see-through runners with their names above them. When every person has
+finished or given up (✕), CPUs still racing get up to 10 more seconds, then
+the results appear. Anyone who joins mid-race watches and joins the next race.
+A race ends after 4 minutes even if someone is stuck.
 
 Each browser runs the physics for its own runner and sends its position
-about 15 times a second. The other browsers draw that runner 120 ms behind
-real time so they can smooth its motion. Runners don't collide with each
-other.
+about 15 times a second. The host's browser also runs the room's CPUs. If the
+host leaves, the player who has been there longest becomes host and takes
+over the CPUs from where they were. Other browsers draw everyone 120 ms
+behind real time so they can smooth the motion. Runners don't collide with
+each other.
+
+## CPUs and generated courses
+
+- **CPU personalities:** every CPU gets a random personality from its seed:
+  - how fast its limbs spin;
+  - how quickly it reacts to the next obstacle, and how far ahead it looks;
+  - how often it picks the wrong shape;
+  - its own versions of the wheel, stilts, tunnel and climbing shapes.
+
+  When it's stuck for 3 seconds, it tries the right shape for where it is,
+  then the other shapes in turn. Difficulty sets the ranges these are drawn
+  from. The solo CPU is a new normal-difficulty personality every race.
+- **Generated courses:** Endless mode and the online "Random course" build
+  courses from a seed. Each obstacle's sizes vary within ranges that a CPU has
+  been checked to handle. Endless courses get longer and harder as you go.
+  Stages 1–3 keep their fixed layouts.
 
 ## Code
 
@@ -59,12 +88,19 @@ other.
   water and mud).
 - `public/src/game.js`: the drawing pad, camera and rendering, the HUD, the CPU and
   race flow.
-- `public/src/online.js`: rooms, the lobby, and drawing other players.
+- `public/src/cpu.js`: CPU racers (difficulty, personality, reacting and
+  recovering).
+- `public/src/online.js`: the online menu, room lobby, drawing other racers,
+  and running the room's CPUs when you are host.
 - `worker/index.js`: the Worker. It serves the game files and the `/api`
-  routes (room codes, the room connection).
-- `worker/room.js`: the `RaceRoom` Durable Object, one per room. It relays
-  positions and drawings, runs the race (lobby, countdown, results) and checks
-  finish times against its own clock. It uses WebSocket hibernation, so an
-  idle room costs nothing.
-- `tools/sim.cjs`: headless check that the CPU can finish every stage. Run it
-  with `node tools/sim.cjs [stages]`.
+  routes: new room codes, the public room list, room lookup, and the room
+  connection.
+- `worker/room.js`: the `RaceRoom` Durable Object, one per room. It keeps the
+  room's settings and CPU slots, relays positions and drawings, runs the race
+  (lobby, countdown, results) and checks finish times against its own clock.
+  It uses WebSocket hibernation, so an idle room costs nothing.
+- `worker/directory.js`: the `Directory` Durable Object, which lists public
+  rooms.
+- `tools/sim.cjs`: headless check that CPUs of every difficulty can finish
+  the fixed stages, Endless stages and random courses. Run it with
+  `node tools/sim.cjs [endless] [random] [cpusPerDifficulty]`.

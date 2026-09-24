@@ -31,48 +31,94 @@
   };
 
   // ---------------- Course ----------------
-  // Section catalogue. `pose` is what the CPU switches to for that section.
+  function rng(seed) {
+    let s = seed >>> 0 || 1;
+    return () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+  }
+  // Integer seed from anything (numbers, strings).
+  function hashSeed(v) {
+    const str = String(v);
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return h >>> 0;
+  }
+
+  // Section catalogue.
+  //   pose: what a CPU should switch to for this section (none = keep the wheel)
+  //   def:  the sizes used by the fixed stages
+  //   gen:  sizes for generated courses; `L` (0..1) is the difficulty level.
+  //         Every range here was checked with tools/sim.cjs: a CPU can always finish.
   const SECTIONS = {
-    rolling:   { label: 'Rolling Hills' },
-    bumps:     { label: 'Bumpy Road' },
-    stairs:    { label: 'Stairs', pose: 'stilts' },
-    trenches:  { label: 'Trenches', pose: 'stilts' },
-    chasm:     { label: 'Chasm', pose: 'stilts' },
-    swell:     { label: 'Big Wave' },
-    ramps:     { label: 'Sawtooth' },
-    tunnel:    { label: 'Tunnel', pose: 'mini' },
-    hurdles:   { label: 'Hurdles', pose: 'stilts' },
-    drop:      { label: 'Drop' },
-    incline:   { label: 'Steep Climb' },
-    pool:      { label: 'Pool', pose: 'stilts' },
-    ledge:     { label: 'Wall', pose: 'climber' },
-    crawl:     { label: 'Crawl & Climb' },
-    conveyor:  { label: 'Conveyor' },
-    ice:       { label: 'Ice Slope' },
-    mud:       { label: 'Mud Pit', pose: 'stilts' },
+    rolling:  { label: 'Rolling Hills', def: { len: 760, amp: 1 },
+      gen: (r, L) => ({ len: rint(r, 500, 900), amp: rnum(r, 0.6, 0.9 + 0.4 * L) }) },
+    bumps:    { label: 'Bumpy Road', def: { len: 480, amp: 12, period: 40 },
+      gen: (r, L) => ({ len: rint(r, 300, 600), amp: rnum(r, 8, 10 + 4 * L), period: rint(r, 32, 48) }) },
+    stairs:   { label: 'Stairs', pose: 'stilts', def: { n: 3, h: 36, tread: 96 },
+      gen: (r, L) => ({ n: rint(r, 2, 3 + Math.round(L)), h: rint(r, 28, 32 + 8 * L), tread: rint(r, 84, 110) }) },
+    trenches: { label: 'Trenches', pose: 'stilts', def: { n: 2, w: 64, d: 34, gap: 110 },
+      gen: (r, L) => ({ n: rint(r, 1, 2 + Math.round(L)), w: rint(r, 50, 58 + 12 * L), d: rint(r, 26, 30 + 8 * L), gap: rint(r, 90, 130) }) },
+    chasm:    { label: 'Chasm', pose: 'stilts', def: { w: 92, d: 60 },
+      gen: (r, L) => ({ w: rint(r, 70, 80 + 14 * L), d: rint(r, 45, 50 + 12 * L) }) },
+    swell:    { label: 'Big Wave', def: { len: 620, dh: 100 },
+      gen: (r, L) => ({ len: rint(r, 520, 700), dh: rint(r, 70, 85 + 25 * L) }) },
+    ramps:    { label: 'Sawtooth', def: { n: 4, len: 100, h: 42 },
+      gen: (r, L) => ({ n: rint(r, 3, 4 + Math.round(L)), len: rint(r, 84, 110), h: rint(r, 30, 34 + 10 * L) }) },
+    tunnel:   { label: 'Tunnel', pose: 'mini', def: { len: 380 },
+      gen: (r, L) => ({ len: rint(r, 240, 300 + 120 * L) }) },
+    hurdles:  { label: 'Hurdles', pose: 'stilts', def: { n: 3, h: 28, gap: 96 },
+      gen: (r, L) => ({ n: rint(r, 2, 3 + Math.round(L)), h: rint(r, 22, 24 + 6 * L), gap: rint(r, 84, 110) }) },
+    drop:     { label: 'Drop', def: { dh: 140 },
+      gen: (r) => ({ dh: rint(r, 80, 150) }) },
+    incline:  { label: 'Steep Climb', def: { len: 230, rise: 115 },
+      gen: (r, L) => { const len = rint(r, 200, 260); return { len, rise: Math.round(len * rnum(r, 0.35, 0.4 + 0.1 * L)) }; } },
+    pool:     { label: 'Pool', pose: 'stilts', def: { len: 700, d: 130 },
+      gen: (r, L) => ({ len: rint(r, 520, 620 + 140 * L), d: rint(r, 100, 110 + 30 * L) }) },
+    ledge:    { label: 'Wall', pose: 'climber', def: { h: 88 },
+      gen: (r, L) => ({ h: rint(r, 60, 70 + 20 * L) }) },
+    crawl:    { label: 'Crawl & Climb', def: { tunnel: 260, h: 80 },
+      gen: (r, L) => ({ tunnel: rint(r, 200, 240 + 40 * L), h: rint(r, 60, 66 + 16 * L) }) },
+    conveyor: { label: 'Conveyor', def: { len: 440, belt: 120 },
+      gen: (r, L) => ({ len: rint(r, 300, 360 + 120 * L), belt: rint(r, 90, 100 + 25 * L) }) },
+    ice:      { label: 'Ice Slope', def: { len: 520, rise: 100 },
+      gen: (r, L) => { const len = rint(r, 420, 560); return { len, rise: Math.round(len * rnum(r, 0.13, 0.15 + 0.04 * L)) }; } },
+    mud:      { label: 'Mud Pit', pose: 'stilts', def: { len: 420, d: 60 },
+      gen: (r, L) => ({ len: rint(r, 300, 360 + 100 * L), d: rint(r, 45, 50 + 12 * L) }) },
   };
+  function rnum(r, a, b) { return a + (b - a) * r(); }
+  function rint(r, a, b) { return Math.round(rnum(r, a, b)); }
 
   const STAGES = [
     ['rolling', 'bumps', 'stairs', 'swell', 'trenches', 'conveyor', 'ramps', 'rolling'],
     ['bumps', 'hurdles', 'pool', 'ice', 'ledge', 'stairs', 'chasm', 'drop', 'incline'],
     ['swell', 'tunnel', 'mud', 'ramps', 'crawl', 'trenches', 'pool', 'conveyor', 'stairs', 'hurdles', 'drop'],
   ];
+  // Stage numbers from here up are single random courses (online "Random course").
+  const RANDOM_BASE = 1000;
 
-  function rng(seed) {
-    let s = seed >>> 0 || 1;
-    return () => { s ^= s << 13; s >>>= 0; s ^= s >> 17; s ^= s << 5; s >>>= 0; return s / 4294967296; };
+  // Difficulty level of a generated stage: endless mode ramps up; random courses are mid-to-hard.
+  function stageLevel(n) {
+    if (n >= RANDOM_BASE) return 0.4 + 0.5 * rng(hashSeed('level' + n))();
+    return Math.max(0.15, Math.min(1, (n - STAGES.length) / 10));
   }
 
-  // Stages beyond the fixed ones are shuffled from the whole catalogue.
+  // The sections of stage n, each { type, p } with its sizes.
   function stageSections(n) {
-    if (n < STAGES.length) return STAGES[n];
-    const rand = rng(n * 7919 + 17);
+    if (n < STAGES.length) return STAGES[n].map(type => ({ type, p: SECTIONS[type].def }));
+    const rand = rng(hashSeed('course' + n));
+    const L = stageLevel(n);
     const keys = Object.keys(SECTIONS);
+    const count = 7 + Math.round(L * 5 + rand() * 2);
     const out = [];
-    const count = 9 + Math.min(4, n - STAGES.length);
+    let specials = 0;
     while (out.length < count) {
-      const k = keys[Math.floor(rand() * keys.length)];
-      if (out[out.length - 1] !== k) out.push(k);
+      const type = keys[Math.floor(rand() * keys.length)];
+      const prev = out[out.length - 1];
+      if (prev && prev.type === type) continue;
+      // Keep at least a third of the course rollable so it never becomes a long slog.
+      const special = !!SECTIONS[type].pose || type === 'crawl';
+      if (special && specials >= Math.ceil(count * 0.66)) continue;
+      if (special) specials++;
+      out.push({ type, p: SECTIONS[type].gen(rand, L) });
     }
     return out;
   }
@@ -99,77 +145,78 @@
     const flat = len => { const y0 = y; seg(len, () => y0); };
 
     const build = {
-      rolling() {
-        const y0 = y, L = 760;
-        const h = t => 28 * Math.sin(t / 170) + 13 * Math.sin(t / 73 + 0.7) + 6 * Math.sin(t / 37 + 2.4);
+      rolling(p) {
+        const y0 = y, L = p.len;
+        const h = t => p.amp * (28 * Math.sin(t / 170) + 13 * Math.sin(t / 73 + 0.7) + 6 * Math.sin(t / 37 + 2.4));
         seg(L, t => y0 + Math.sin(Math.PI * t / L) * h(t));
       },
-      bumps() { const y0 = y; seg(480, t => y0 - 12 * (1 - Math.cos(2 * Math.PI * t / 40)) / 2); },
-      stairs() {
-        for (let k = 0; k < 3; k++) { y -= 36; flat(96); }
-        const y1 = y; seg(280, t => y1 + 108 * t / 280); y += 108;
+      bumps(p) { const y0 = y; seg(p.len, t => y0 - p.amp * (1 - Math.cos(2 * Math.PI * t / p.period)) / 2); },
+      stairs(p) {
+        for (let k = 0; k < p.n; k++) { y -= p.h; flat(p.tread); }
+        const down = p.n * p.h, y1 = y, L = Math.max(200, down * 2.6);
+        seg(L, t => y1 + down * t / L); y += down;
       },
-      trenches() {
+      trenches(p) {
         const y0 = y;
-        for (let k = 0; k < 2; k++) { seg(110, () => y0); seg(64, () => y0 + 34); }
-        seg(110, () => y0);
+        for (let k = 0; k < p.n; k++) { seg(p.gap, () => y0); seg(p.w, () => y0 + p.d); }
+        seg(p.gap, () => y0);
       },
-      chasm() { const y0 = y; seg(80, () => y0); seg(92, () => y0 + 60); seg(80, () => y0); },
-      swell() { const y0 = y, L = 620; seg(L, t => y0 - 100 * (1 - Math.cos(2 * Math.PI * t / L)) / 2); },
-      ramps() { for (let k = 0; k < 4; k++) { const y0 = y; seg(100, t => y0 - 42 * t / 100); } },
-      tunnel() {
+      chasm(p) { const y0 = y; seg(80, () => y0); seg(p.w, () => y0 + p.d); seg(80, () => y0); },
+      swell(p) { const y0 = y, L = p.len; seg(L, t => y0 - p.dh * (1 - Math.cos(2 * Math.PI * t / L)) / 2); },
+      ramps(p) { for (let k = 0; k < p.n; k++) { const y0 = y; seg(p.len, t => y0 - p.h * t / p.len); } },
+      tunnel(p) {
         const y0 = y;
         flat(60);
-        seg(380, () => y0, () => y0 - CFG.CLEARANCE);
+        seg(p.len, () => y0, () => y0 - CFG.CLEARANCE);
         flat(60);
       },
-      hurdles() {
+      hurdles(p) {
         const y0 = y;
-        for (let k = 0; k < 3; k++) { seg(96, () => y0); seg(12, () => y0 - 28); }
-        seg(96, () => y0);
+        for (let k = 0; k < p.n; k++) { seg(p.gap, () => y0); seg(12, () => y0 - p.h); }
+        seg(p.gap, () => y0);
       },
-      drop() { flat(40); y += 140; flat(40); },
-      incline() { const y0 = y; seg(230, t => y0 - 115 * t / 230); y -= 115; },
-      pool() {
-        const y0 = y, d = 130;
+      drop(p) { flat(40); y += p.dh; flat(40); },
+      incline(p) { const y0 = y; seg(p.len, t => y0 - p.rise * t / p.len); y -= p.rise; },
+      pool(p) {
+        const y0 = y, d = p.d;
         curFluid = { level: y0, kind: 'water' };
         seg(60, t => y0 + d * t / 60);
-        seg(340, () => y0 + d);
+        seg(p.len - 360, () => y0 + d);
         seg(300, t => y0 + d * (1 - t / 300));
         curFluid = null;
       },
-      ledge() {
-        flat(60); y -= 88; flat(170);
-        const y1 = y; seg(300, t => y1 + 88 * t / 300); y += 88;
+      ledge(p) {
+        flat(60); y -= p.h; flat(170);
+        const y1 = y, L = Math.max(240, p.h * 3.4); seg(L, t => y1 + p.h * t / L); y += p.h;
       },
-      crawl(sec) {
+      crawl(p, sec) {
         const y0 = y;
         flat(60);
-        seg(260, () => y0, () => y0 - CFG.CLEARANCE);
+        seg(p.tunnel, () => y0, () => y0 - CFG.CLEARANCE);
         flat(180);
         sec.wallX = x;
-        y -= 80; flat(170);
-        const y1 = y; seg(300, t => y1 + 80 * t / 300); y += 80;
+        y -= p.h; flat(170);
+        const y1 = y, L = Math.max(240, p.h * 3.75); seg(L, t => y1 + p.h * t / L); y += p.h;
       },
-      conveyor() { curSurf = { belt: -120 }; flat(440); curSurf = null; },
-      ice() {
+      conveyor(p) { curSurf = { belt: -p.belt }; flat(p.len); curSurf = null; },
+      ice(p) {
         const y0 = y; curSurf = { mu: 0.3 };
-        seg(520, t => y0 - 100 * t / 520); curSurf = null; y -= 100;
+        seg(p.len, t => y0 - p.rise * t / p.len); curSurf = null; y -= p.rise;
       },
-      mud() {
-        const y0 = y, d = 60;
+      mud(p) {
+        const y0 = y, d = p.d;
         curFluid = { level: y0, kind: 'mud' };
         seg(60, t => y0 + d * t / 60);
-        seg(240, () => y0 + d);
+        seg(p.len - 180, () => y0 + d);
         seg(120, t => y0 + d * (1 - t / 120));
         curFluid = null;
       },
     };
 
     flat(300);
-    for (const type of stageSections(stageIndex)) {
+    for (const { type, p } of stageSections(stageIndex)) {
       const sec = { type, label: SECTIONS[type].label, from: x, to: 0 };
-      build[type](sec);
+      build[type](p, sec);
       sec.to = x;
       sections.push(sec);
       if (type === 'crawl') {
@@ -427,8 +474,9 @@
   }
 
   root.DRR = {
-    CFG, FIG, PAD_W, PAD_H, SECTIONS, STAGES, POSES,
-    buildCourse, stageSections, groundAt, ceilAt, fluidAt, surfAt,
+    CFG, FIG, PAD_W, PAD_H, SECTIONS, STAGES, POSES, RANDOM_BASE,
+    rng, hashSeed, halfRing,
+    buildCourse, stageSections, stageLevel, groundAt, ceilAt, fluidAt, surfAt,
     createRunner, swapLimbs, settle, step, eachPoint, planIndex, resample,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
