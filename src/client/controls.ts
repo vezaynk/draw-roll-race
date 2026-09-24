@@ -5,7 +5,7 @@ import TIPS from '../shared/course/tips';
 import { hasLimbs } from '../shared/limbs';
 import { loadLeader } from './daily';
 import { byId } from './dom';
-import { DEFAULT_HINT, showHint, toast } from './hud';
+import { DEFAULT_HINT, showHint } from './hud';
 import { resetStage, startRace, stopRace } from './race';
 import type { NextAction } from './results';
 import { hooks, state } from './state';
@@ -15,14 +15,14 @@ function hideResults(): void {
   byId('result').hidden = true;
 }
 
-export function enterDaily(): void {
+/** The daily course, ready to race. `welcome` is added to the hint (for first-time players). */
+export function enterDaily(welcome = ''): void {
   const day = today();
   state.daily = { day };
   state.stage = dailyStage(day);
   hideResults();
   resetStage();
-  toast('Daily course', 1200);
-  const intro = 'Today’s course is the same for everyone. Draw to start.';
+  const intro = `${welcome}Today’s course is the same for everyone.`;
   showHint(intro, 0);
   loadLeader(day).then((line) => {
     if (line && state.daily?.day === day && !state.racing) showHint(`${intro} ${line}`, 0);
@@ -84,7 +84,7 @@ export default function initControls(): void {
     if (!hasLimbs(state.limbs)) showHint(DEFAULT_HINT, 0);
   });
 
-  byId('start-daily').addEventListener('click', enterDaily);
+  byId('start-daily').addEventListener('click', () => enterDaily());
   byId('start-tutorial').addEventListener('click', enterTutorial);
   byId('exit-btn').addEventListener('click', exitToStart);
 

@@ -1,4 +1,4 @@
-// Tutorial for new players, solo options (opponents), best-run ghost, and the daily leaderboard.
+// The daily course on arrival, solo options (opponents), best-run ghost, and the daily leaderboard.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import buildCourse from '../../src/shared/course/build';
@@ -11,12 +11,14 @@ import {
 const browser = await launch();
 after(() => browser.close());
 
-test('new players start in the tutorial', async () => {
+test('the daily course is ready on arrival, and new players are pointed to the tutorial', async () => {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const p = await ctx.newPage();
   await p.goto(BASE);
-  assert.match(await text(p, '#stage-label'), /Tutorial/);
-  assert.match(await text(p, '#pad-hint'), /half circle/i);
+  assert.match(await text(p, '#stage-label'), /Daily course/);
+  assert.equal(await text(p, '#mode-name'), 'Daily course');
+  assert.equal(await text(p, '#mode-sub'), 'Draw a limb to start');
+  assert.match(await text(p, '#pad-hint'), /New here\? Try the Tutorial/);
   await ctx.close();
 });
 

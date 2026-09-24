@@ -25,10 +25,15 @@ test('the start buttons open the tutorial, the daily course and the online menu'
   // They moved out of Options and the top bar.
   assert.equal(await p.locator('#daily-btn, #tutorial-btn, #online-btn, #restart-btn').count(), 0);
 
+  // The selected course is named above the start buttons until a race starts.
+  assert.equal(await text(p, '#mode-name'), 'Daily course');
   await p.click('#start-tutorial');
   assert.match(await text(p, '#stage-label'), /Tutorial/);
+  assert.equal(await text(p, '#mode-name'), 'Tutorial');
+  assert.equal(await text(p, '#mode-sub'), 'Draw a limb to start');
   await p.click('#start-daily');
   assert.match(await text(p, '#stage-label'), /Daily course/);
+  assert.equal(await text(p, '#mode-name'), 'Daily course');
 
   await p.click('#start-online');
   await p.waitForSelector('#online-menu', { state: 'visible' });
@@ -43,11 +48,15 @@ test('drawing starts a race, and Exit goes back to the start screen', async () =
   const p = await newPlayer(browser, 'Bea', { width: 1280, height: 800 });
   await p.goto(`${BASE}?stage=990`);
   await assertAtStart(p);
+  assert.equal(await text(p, '#mode-name'), 'Test course');
   await drawWheel(p);
   await p.waitForFunction(() => window.drr.state.racing && window.drr.state.time > 0.5);
   assert.equal(await shown(p, '#start-menu'), false);
+  assert.equal(await shown(p, '#mode-title'), false, 'the title goes once the race starts');
   await p.click('#exit-btn');
   await assertAtStart(p);
+  // The title comes back once any toast (like "GO!") has gone.
+  await p.waitForSelector('#mode-title', { state: 'visible' });
   assert.equal(await p.evaluate(() => window.drr.state.time), 0);
   assert.deepEqual(p.errors, []);
   await p.context().close();
@@ -64,6 +73,8 @@ test('Exit in a room gives up the race, leaves the room and goes back to the sta
   await assertAtStart(p);
   assert.equal(await shown(p, '#lobby'), false);
   assert.equal(await p.evaluate(() => window.location.search), '');
+  await p.waitForSelector('#mode-title', { state: 'visible' });
+  assert.equal(await text(p, '#mode-name'), 'Daily course', 'leaving a room goes back to the daily course');
   assert.deepEqual(p.errors, []);
   await p.context().close();
 });

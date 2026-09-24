@@ -5,16 +5,17 @@ import {
   CODE_RE, EMOTES, RANDOM_COURSE, SAME_COURSE,
 } from '../../shared/protocol';
 import type { RoomInfo, ServerMessage } from '../../shared/protocol';
+import { enterDaily } from '../controls';
 import { byId, ordinal } from '../dom';
 import {
-  DEFAULT_HINT, showHint, stageName, toast, updateControls, updateHud,
+  stageName, toast, updateControls, updateHud,
 } from '../hud';
 import { resetStage, startRace, stopRace } from '../race';
 import { drawBubble, labelSpot } from '../render/draw';
 import { render } from '../render/scene';
 import { spawnShards } from '../render/shards';
 import { hooks, state } from '../state';
-import { playerName, save, setPlayerName } from '../storage';
+import { playerName, setPlayerName } from '../storage';
 import RoomConnection from './connection';
 import type { RoomSetup } from './connection';
 import {
@@ -391,11 +392,8 @@ function leave(): void {
   byId('exit-btn').title = 'Back to the start screen';
   showLobby(false);
   stopRace();
-  // Back to the start screen on your own stage.
-  state.daily = null;
-  state.stage = save.stage;
-  resetStage();
-  showHint(DEFAULT_HINT, 0);
+  // Back to the start screen, with the daily course ready.
+  enterDaily();
 }
 
 function installHooks(): void {

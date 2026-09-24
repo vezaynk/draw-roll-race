@@ -63,6 +63,18 @@ html, body {
 }
 #toast.show { opacity: 1; transform: translate(-50%, -50%) scale(1); }
 
+/* What is selected, while no race has started. */
+#mode-title {
+  position: fixed; top: 22%; left: 50%; transform: translate(-50%, -50%);
+  width: calc(100% - 32px); text-align: center; pointer-events: none; color: #fff;
+  -webkit-text-stroke: 2px var(--ink); paint-order: stroke fill;
+}
+#mode-title[hidden],
+body:has(#options:not([hidden]), #online-menu:not([hidden]), #result:not([hidden])) #mode-title { display: none; }
+#mode-name { margin: 0; font-size: clamp(28px, 7vw, 54px); font-weight: 900; line-height: 1.1; }
+#mode-sub { margin: 6px 0 0; font-size: clamp(15px, 3.4vw, 22px); font-weight: 800; -webkit-text-stroke-width: 1.5px; }
+body:has(#toast.show) #mode-title { visibility: hidden; }
+
 #pad-wrap {
   position: fixed; left: 50%; transform: translateX(-50%);
   bottom: max(16px, env(safe-area-inset-bottom));
@@ -231,7 +243,9 @@ button:disabled { opacity: .5; cursor: default; }
 #menu-btn {
   pointer-events: auto; width: 34px; height: 34px; padding: 0; margin-top: -6px;
   font-size: 17px; line-height: 1; background: rgba(255,255,255,.9); text-shadow: none;
+  display: inline-flex; align-items: center; justify-content: center; color: var(--ink);
 }
+#menu-btn svg { display: block; }
 .check { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
 .check input { width: 18px; height: 18px; accent-color: var(--ink); }
 .field-row select { font: inherit; padding: 5px 8px; border: 2px solid #c9cdd6; border-radius: 10px; background: #fff; color: var(--ink); }
