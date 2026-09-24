@@ -1,7 +1,9 @@
 {
   "$schema": "node_modules/wrangler/config-schema.json",
   "name": "draw-roll-race",
-  "main": "worker/index.js",
+  "main": "src/worker/index.ts",
+  // Bundles the browser code (src/client) into public/app.js before dev and deploy.
+  "build": { "command": "npm run build", "watch_dir": "src" },
   "compatibility_date": "2025-09-01",
   // The game itself is static; only /api/* reaches the Worker.
   "assets": {

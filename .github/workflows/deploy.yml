@@ -24,11 +24,14 @@ jobs:
           cache: npm
       - run: npm ci
 
-      - name: Syntax check
-        run: for f in public/src/*.js worker/*.js tests/e2e/*.mjs; do node --check "$f"; done
+      - name: Type check
+        run: npm run typecheck
+
+      - name: Lint (Airbnb style)
+        run: npm run lint
 
       - name: CPUs finish the fixed, tutorial, daily, endless and random courses
-        run: node tools/sim.cjs 10 10 2
+        run: npm run sim -- 10 10 2
 
       - name: Worker builds
         run: npx wrangler deploy --dry-run --outdir dist

@@ -1,0 +1,233 @@
+// A race on the current course: starting, the fixed-step loop, spikes, CPUs and finishing.
+import { CFG } from '../shared/config';
+import buildCourse from '../shared/course/build';
+import { groundAt } from '../shared/course/queries';
+import { DIFFICULTIES } from '../shared/cpu/personality';
+import CpuRacer from '../shared/cpu/racer';
+import { hasLimbs } from '../shared/limbs';
+import step from '../shared/physics';
+import {
+  createRunner, settle, shatter, swapLimbs,
+} from '../shared/runner';
+import type { Shattered } from '../shared/types';
+import { COLORS, CPU_COLORS } from './colors';
+import { byId } from './dom';
+import {
+  loadGhost, recordLimbs, recordSample, startRecording,
+} from './ghost';
+import {
+  buildProgress, hideHint, showHint, toast, updateHud, updateStageButton,
+} from './hud';
+import { renderPad } from './pad';
+import { render } from './render/scene';
+import { spawnShards } from './render/shards';
+import showResults, { courseKey } from './results';
+import { sfx } from './sound';
+import { hooks, state } from './state';
+import { save } from './storage';
+import { TUTORIAL } from '../shared/course/stages';
+
+const LIMB_NAMES = { arm: 'Arms', leg: 'Legs' } as const;
+
+let rafId = 0;
+let lastTs = 0;
+let acc = 0;
+let countdownShown: number | null = null;
+
+/** A runner at the start line with the current drawing (or none). */
+function playerAtStart() {
+  const runner = createRunner(state.limbs, COLORS.player);
+  settle(state.course, runner, state.course.startX);
+  return runner;
+}
+
+/** Back to the start of the current stage, not racing. */
+export function resetStage(): void {
+  state.course = buildCourse(state.stage);
+  state.countdownEnd = 0;
+  state.cpus = [];
+  state.racing = false;
+  state.finished = false;
+  state.time = 0;
+  state.cpuTime = null;
+  state.section = null;
+  buildProgress();
+  // Show the current drawing at the start line.
+  state.player = hasLimbs(state.limbs) ? playerAtStart() : null;
+  updateHud();
+  render();
+}
+
+export function stopRace(): void {
+  state.racing = false;
+  state.countdownEnd = 0;
+  cancelAnimationFrame(rafId);
+  updateStageButton();
+}
+
+/** Spikes broke one or both limbs: throw the pieces, clear them from the pad, ask for a redraw. */
+function onShatter(broken: Shattered): void {
+  if (state.player) spawnShards(state.player, broken.lost);
+  state.limbs = broken.limbs;
+  state.player = broken.runner;
+  if (state.recording) recordLimbs(state.recording, state.time, state.limbs);
+  renderPad();
+  const what = broken.lost.map((k) => LIMB_NAMES[k]).join(' and ');
+  toast(`${what} shattered!`, 1200);
+  showHint(`Spikes broke your ${what.toLowerCase()}. Draw new ones.`, 2600);
+  sfx('shatter');
+  hooks.onLimbs?.(state.limbs, broken.lost);
+}
+
+function stepCpus(): void {
+  state.cpus.forEach((cpu) => {
+    if (cpu.finishTime !== null) return;
+    cpu.step(CFG.DT, state.time);
+    if (cpu.finishTime !== null && state.cpuTime === null) {
+      state.cpuTime = cpu.finishTime;
+      toast('A CPU finished!', 1600);
+      showHint('A CPU finished first. Keep going, or tap ↻ to restart.', 3500);
+      byId('section-label').textContent = 'CPU finished';
+    }
+  });
+}
+
+function finish(): void {
+  state.racing = false;
+  state.finished = true;
+  updateStageButton();
+  updateHud();
+  render();
+  if (state.mode === 'online') {
+    hooks.onFinish?.(state.time);
+    return;
+  }
+  showResults();
+}
+
+/** One physics step of the whole race. Returns false when the race is over. */
+function tick(): boolean {
+  const player = state.player as NonNullable<typeof state.player>;
+  state.time += CFG.DT;
+  step(state.course, player, CFG.DT);
+  const broken = shatter(state.course, player, state.limbs);
+  if (broken) onShatter(broken);
+  stepCpus();
+  const runner = state.player as NonNullable<typeof state.player>;
+  if (state.recording) recordSample(state.recording, state.time, runner);
+  if (runner.x >= state.course.finishX) {
+    finish();
+    return false;
+  }
+  // Fell out of the world somehow: put the runner back on the ground.
+  if (runner.y > groundAt(state.course, runner.x) + 400) {
+    settle(state.course, runner, runner.x);
+    runner.vx = 0;
+    runner.vy = 0;
+  }
+  return true;
+}
+
+/** Shows 3, 2, 1 while the countdown runs. Returns true while it is still counting. */
+function countingDown(): boolean {
+  if (!state.countdownEnd) return false;
+  const left = state.countdownEnd - performance.now();
+  if (left > 0) {
+    const n = Math.min(3, Math.ceil(left / 1000));
+    if (n !== countdownShown) {
+      countdownShown = n;
+      toast(String(n), 900);
+      sfx('count');
+    }
+    return true;
+  }
+  state.countdownEnd = 0;
+  toast('GO!', 700);
+  sfx('go');
+  if (!hasLimbs(state.limbs)) showHint('Draw legs to start moving', 3000);
+  lastTs = 0;
+  return false;
+}
+
+function frame(ts: number): void {
+  if (!state.racing) return;
+  if (countingDown()) {
+    render();
+    rafId = requestAnimationFrame(frame);
+    return;
+  }
+  if (!lastTs) lastTs = ts;
+  acc += Math.min((ts - lastTs) / 1000, 0.05);
+  lastTs = ts;
+  let running = true;
+  while (running && acc >= CFG.DT) {
+    acc -= CFG.DT;
+    running = tick();
+  }
+  if (!running) return;
+  hooks.onFrame?.();
+  updateHud();
+  render();
+  rafId = requestAnimationFrame(frame);
+}
+
+function soloCpus(): CpuRacer[] {
+  if (state.stage === TUTORIAL) return [];
+  // New personalities every race, so CPUs never play the same way twice.
+  return Array.from({ length: save.cpuCount }, (_, i) => new CpuRacer(state.course, {
+    seed: Math.floor(Math.random() * 1e9),
+    difficulty: save.cpuDifficulty === 'mixed' ? DIFFICULTIES[i % DIFFICULTIES.length] : save.cpuDifficulty,
+    color: CPU_COLORS[i % CPU_COLORS.length],
+    onSwap: (_limbs, _pose, lost, before) => {
+      if (lost) spawnShards(before, lost);
+    },
+  }));
+}
+
+export interface RaceOptions {
+  /** Race solo CPUs (default true). */
+  cpus?: boolean;
+  /** Hold everyone still for a 3-2-1 first. */
+  countdownMs?: number;
+}
+
+export function startRace({ cpus = true, countdownMs = 0 }: RaceOptions = {}): void {
+  const player = playerAtStart();
+  state.player = player;
+  state.cpus = cpus ? soloCpus() : [];
+  state.cpuTime = null;
+  state.tipsShown = {};
+  state.ghost = state.mode === 'solo' && save.ghost ? loadGhost(courseKey()) : null;
+  state.recording = startRecording(player, state.limbs);
+  state.time = 0;
+  state.racing = true;
+  state.finished = false;
+  state.countdownEnd = countdownMs ? performance.now() + countdownMs : 0;
+  countdownShown = null;
+  updateStageButton();
+  if (!state.countdownEnd) {
+    toast('GO!', 700);
+    sfx('go');
+  }
+  lastTs = 0;
+  acc = 0;
+  cancelAnimationFrame(rafId);
+  rafId = requestAnimationFrame(frame);
+}
+
+/** A new limb was drawn on the pad. */
+export function onLimbsDrawn(): void {
+  hideHint();
+  hooks.onLimbs?.(state.limbs);
+  sfx('swap');
+  if (state.racing && state.player) {
+    state.player = swapLimbs(state.course, state.player, state.limbs);
+    if (state.recording) recordLimbs(state.recording, state.time, state.limbs);
+  } else if (state.mode === 'online') {
+    // In a room the host starts races; just show the new drawing at the start line.
+    state.player = playerAtStart();
+    render();
+  } else if (!state.finished) {
+    startRace();
+  }
+}

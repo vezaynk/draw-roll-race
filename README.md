@@ -6,14 +6,14 @@ courses and can redraw your limbs at any time during a race.
 
 Live at <https://draw-roll-race.k.workers.dev>.
 
-Solo play needs no server: open `public/index.html` in a browser. Online
-rooms and the daily leaderboard need the Cloudflare Worker in this repo:
+Solo play needs no server: run `npm run build`, then open `public/index.html` in a browser.
+Online rooms and the daily leaderboard need the Cloudflare Worker in this repo:
 
 ```sh
 npm install
 npm run dev        # http://localhost:8787
 npm run deploy     # to your Cloudflare account (run `npx wrangler login` first)
-npm test           # CPU course simulation + browser tests
+npm test           # type check, lint, CPU course simulation, browser tests
 ```
 
 ## How to play
@@ -84,8 +84,8 @@ you rejoin within a minute as the same racer and keep racing.
   don't match the claimed time.
 - Player and room names are checked against a list of blocked words. Creating
   rooms and sending daily runs are rate-limited per network.
-- Race and daily-run numbers go to Workers Analytics Engine (dataset
-  `draw_roll_race`).
+- Race and daily-run numbers can go to Workers Analytics Engine: enable it on
+  the account, then add a `STATS` binding in `wrangler.jsonc`.
 
 ### CPUs and generated courses
 
@@ -101,9 +101,9 @@ you rejoin within a minute as the same racer and keep racing.
 
 `.github/workflows/deploy.yml`:
 
-- **Every pull request and push:** a syntax check, the CPU course simulation,
-  a Worker build, and the browser tests (`tests/e2e`, run against a local
-  Worker).
+- **Every pull request and push:** type check, lint, the CPU course
+  simulation, a Worker build, and the browser tests (`tests/e2e`, run against
+  a local Worker).
 - **Pull requests from this repository:** a `wrangler preview` deployment named
   `pr-<number>`, with its own rooms and a separate preview database. Its link is
   posted on the pull request and it is deleted when the pull request closes.
@@ -118,21 +118,31 @@ The daily leaderboard uses the D1 databases `draw-roll-race` (production) and
 
 ## Code
 
-- `public/src/physics.js`: courses (fixed stages, tutorial, daily and
-  generated), the runner model and the fixed-step physics (ground and ceiling
-  contacts, friction, belts, ice, water, mud, spikes, wind, low gravity, bounce
-  pads).
-- `public/src/cpu.js`: CPU racers.
-- `public/src/game.js`: drawing pad, rendering, HUD, solo races, ghosts, daily
-  course, tutorial and options.
-- `public/src/online.js`: the online menu, room lobby and drawing other racers.
-- `public/src/sound.js`: synthesised sound effects and vibration.
-- `worker/index.js`: the Worker's `/api` routes.
-- `worker/room.js`: the `RaceRoom` Durable Object, one per room.
-- `worker/directory.js`: the `Directory` Durable Object that lists public rooms.
-- `worker/daily.js`: the daily leaderboard (D1) and run checks.
-- `worker/moderation.js`: the name filter.
-- `tools/sim.cjs`: headless check that CPUs finish every kind of course
-  (`node tools/sim.cjs [endless] [random] [cpusPerDifficulty]`).
-- `tests/e2e/`: browser tests (`npm run test:e2e` starts a local Worker with
-  the short test courses enabled).
+TypeScript throughout, in the Airbnb style (`npm run lint`), in three layers:
+
+- `src/shared/`: everything the browser, the server and the simulation share, with no DOM or
+  Worker dependencies.
+  - `config.ts`, `types.ts`, `random.ts`, `geometry.ts`, `limbs.ts`, `poses.ts`
+  - `course/`: the obstacle catalogue (`sections.ts`), stages, the tutorial, the daily and
+    generated courses (`stages.ts`), terrain building (`build.ts`), lookups (`queries.ts`) and
+    obstacle tips (`tips.ts`).
+  - `runner.ts` (the stick figure and its spinning limbs), `physics.ts` (the fixed-step
+    physics), `cpu/` (CPU personalities and the `CpuRacer`), `validation.ts` (checks that runs
+    are possible) and `protocol.ts` (messages between browsers and rooms).
+- `src/client/`: the game in the browser, bundled by esbuild into `public/app.js`.
+  - `main.ts` boots it. `state.ts` holds the game state and the hooks online play uses.
+  - `race.ts` (the race loop), `pad.ts` (drawing), `hud.ts`, `results.ts`, `controls.ts`,
+    `options.ts`, `ghost.ts`, `daily.ts`, `sound.ts`, `storage.ts`.
+  - `render/`: the scene and camera, obstacles, runners and shattered pieces.
+  - `online/`: the connection, the Online menu, the lobby, and other racers.
+- `src/worker/`: the Cloudflare Worker.
+  - `index.ts` (routes), `room.ts` (the `RaceRoom` Durable Object), `roomState.ts`,
+    `cpuSimulation.ts` (runs a room's CPUs), `directory.ts` (the public room list),
+    `daily.ts` (the leaderboard), `moderation.ts`, `http.ts`, `env.ts`.
+- `tools/sim.ts`: checks that CPUs finish every kind of course
+  (`npm run sim -- [endless] [random] [cpusPerDifficulty]`).
+- `tests/e2e/`: browser tests (`npm run test:e2e` starts a local Worker with the short test
+  courses enabled).
+
+Wrangler runs `npm run build` before `dev` and `deploy`, so the browser bundle is always
+current. `npm test` runs the type check, lint, simulation and browser tests.

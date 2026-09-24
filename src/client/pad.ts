@@ -1,0 +1,121 @@
+// The drawing pad: a stick figure template; strokes that start near the shoulder become arms,
+// near the hip become legs.
+import { FIG } from '../shared/config';
+import { rotateHalfTurn } from '../shared/geometry';
+import type {
+  LimbKind, Point, Stroke,
+} from '../shared/types';
+import { COLORS } from './colors';
+import { byId } from './dom';
+import { showHint } from './hud';
+import { polyline } from './render/draw';
+import { state } from './state';
+
+let pad: HTMLCanvasElement;
+let pctx: CanvasRenderingContext2D;
+let stroke: Stroke | null = null;
+
+/** The joint a stroke starting at p attaches to. */
+function jointFor(p: Point): { kind: LimbKind; joint: Point } {
+  const dShoulder = Math.hypot(p.x - FIG.shoulder.x, p.y - FIG.shoulder.y);
+  const dHip = Math.hypot(p.x - FIG.hip.x, p.y - FIG.hip.y);
+  return dShoulder < dHip ? { kind: 'arm', joint: FIG.shoulder } : { kind: 'leg', joint: FIG.hip };
+}
+
+export function renderPad(): void {
+  if (!pctx) return;
+  pctx.clearRect(0, 0, pad.width, pad.height);
+  pctx.lineCap = 'round';
+  pctx.lineJoin = 'round';
+  // A faint copy of the mirrored half, so players see the symmetry.
+  pctx.strokeStyle = 'rgba(239,90,60,0.18)';
+  pctx.lineWidth = 5;
+  state.limbs.arm.forEach((s) => polyline(pctx, rotateHalfTurn(s, FIG.shoulder)));
+  state.limbs.leg.forEach((s) => polyline(pctx, rotateHalfTurn(s, FIG.hip)));
+  // The figure.
+  pctx.strokeStyle = COLORS.ink;
+  pctx.lineWidth = 4;
+  polyline(pctx, [FIG.neck, FIG.hip]);
+  pctx.beginPath();
+  pctx.arc(FIG.head.x, FIG.head.y, FIG.head.r, 0, Math.PI * 2);
+  pctx.fillStyle = '#fff';
+  pctx.fill();
+  pctx.stroke();
+  // Limbs, and the stroke being drawn.
+  pctx.strokeStyle = COLORS.player;
+  pctx.lineWidth = 5;
+  [...state.limbs.arm, ...state.limbs.leg].forEach((s) => polyline(pctx, s));
+  if (stroke && stroke.length > 1) {
+    pctx.globalAlpha = 0.55;
+    polyline(pctx, stroke);
+    pctx.globalAlpha = 1;
+  }
+  // Joints; while drawing, a ring marks the one the stroke will attach to.
+  const target = stroke ? jointFor(stroke[0]).joint : null;
+  [FIG.shoulder, FIG.hip].forEach((j) => {
+    if (j === target) {
+      pctx.beginPath();
+      pctx.arc(j.x, j.y, 12, 0, Math.PI * 2);
+      pctx.strokeStyle = COLORS.player;
+      pctx.lineWidth = 2.5;
+      pctx.stroke();
+    }
+    pctx.beginPath();
+    pctx.arc(j.x, j.y, 6, 0, Math.PI * 2);
+    pctx.fillStyle = COLORS.player;
+    pctx.fill();
+  });
+}
+
+function padPoint(e: PointerEvent): Point {
+  const r = pad.getBoundingClientRect();
+  return {
+    x: ((e.clientX - r.left) * pad.width) / r.width,
+    y: ((e.clientY - r.top) * pad.height) / r.height,
+  };
+}
+
+/** Sets up the pad. onDrawn is called after a limb is drawn (state.limbs already updated). */
+export function initPad(onDrawn: () => void): void {
+  pad = byId<HTMLCanvasElement>('pad');
+  pctx = pad.getContext('2d') as CanvasRenderingContext2D;
+
+  pad.addEventListener('pointerdown', (e) => {
+    if (!byId('result').hidden) return;
+    stroke = [padPoint(e)];
+    pad.setPointerCapture(e.pointerId);
+    renderPad();
+  });
+
+  pad.addEventListener('pointermove', (e) => {
+    if (!stroke) return;
+    const p = padPoint(e);
+    // Outside the pad, points are skipped; coming back joins with a straight line.
+    if (p.x < 0 || p.y < 0 || p.x > pad.width || p.y > pad.height) return;
+    const last = stroke[stroke.length - 1];
+    if (Math.hypot(p.x - last.x, p.y - last.y) > 4) {
+      stroke.push(p);
+      renderPad();
+    }
+  });
+
+  const endStroke = () => {
+    if (!stroke) return;
+    const s = stroke;
+    stroke = null;
+    if (s.length >= 3) {
+      // Attach to the nearer joint, shifting the stroke so it starts there.
+      const { kind, joint } = jointFor(s[0]);
+      const dx = joint.x - s[0].x;
+      const dy = joint.y - s[0].y;
+      state.limbs[kind] = [s.map((p) => ({ x: p.x + dx, y: p.y + dy }))];
+      onDrawn();
+    } else {
+      showHint('Drag to draw a line — a tap is too short');
+    }
+    renderPad();
+  };
+  pad.addEventListener('pointerup', endStroke);
+  pad.addEventListener('pointercancel', endStroke);
+  renderPad();
+}

@@ -3,14 +3,28 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "build": "esbuild src/client/main.ts --bundle --format=iife --target=es2020 --sourcemap --outfile=public/app.js",
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
-    "sim": "node tools/sim.cjs",
-    "test:e2e": "node tests/e2e/run.mjs",
-    "test": "node tools/sim.cjs 10 10 2 && node tests/e2e/run.mjs"
+    "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.worker.json && tsc -p tsconfig.node.json",
+    "lint": "eslint --max-warnings 0 --ext .ts src tools tests",
+    "sim": "tsx tools/sim.ts",
+    "test:e2e": "tsx tests/e2e/run.ts",
+    "test": "npm run typecheck && npm run lint && tsx tools/sim.ts 10 10 2 && tsx tests/e2e/run.ts"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^5.20260924.1",
+    "@types/node": "^26.6.2",
+    "@typescript-eslint/eslint-plugin": "^7.18.0",
+    "@typescript-eslint/parser": "^7.18.0",
+    "esbuild": "^0.28.2",
+    "eslint": "^8.57.1",
+    "eslint-config-airbnb-base": "^15.0.0",
+    "eslint-config-airbnb-typescript": "^18.0.0",
+    "eslint-plugin-import": "^2.32.0",
     "playwright": "^1.56.1",
+    "tsx": "^4.23.15",
+    "typescript": "^5.5.4",
     "wrangler": "^4.137.0"
   }
 }
