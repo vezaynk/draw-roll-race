@@ -36,8 +36,10 @@ test('opponents from Options race, and your best run comes back as a ghost', asy
   await waitForText(p, '#result', /You win|You finished|Finished/, 60000);
   assert.match(await text(p, '#result-best'), /First finish|New best|Best/);
 
-  // Race the same course again: the ghost of the first run appears.
-  await p.click('#again-btn');
+  // Race the same course again: the ghost of the first run appears. If a CPU won, the main
+  // button is "Retry" and does that; otherwise "Race this course again" does.
+  const again = await p.isVisible('#again-btn') ? '#again-btn' : '#next-btn[data-action="again"]';
+  await p.click(again);
   await p.waitForTimeout(600);
   const ghostShown = await p.evaluate(() => document.querySelector<HTMLElement>('#progress .dot.ghost')?.hidden === false);
   assert.equal(ghostShown, true, 'ghost dot visible');

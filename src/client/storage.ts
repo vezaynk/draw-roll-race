@@ -64,7 +64,8 @@ function load(): { data: SaveData; firstVisit: boolean } {
   const stored = readJson<Partial<SaveData> | null>(SAVE_KEY, null);
   const data: SaveData = { ...DEFAULTS, ...stored };
   if (!data.player) data.player = randomId();
-  // New players start with the tutorial.
+  // For new players, the tutorial comes first in the stage list (the game opens on the daily
+  // course; see main.ts).
   if (!stored) data.stage = TUTORIAL;
   return { data, firstVisit: !stored };
 }
