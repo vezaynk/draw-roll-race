@@ -46,9 +46,9 @@ export class Directory extends DurableObject<Env> {
         || b.updatedAt - a.updatedAt)
       .slice(0, MAX_LISTED)
       .map(({
-        code, name, host, players, cpus, phase,
+        code, name, host, players, phase,
       }) => ({
-        code, name, host, players, cpus, phase,
+        code, name, host, players, phase,
       }));
   }
 }

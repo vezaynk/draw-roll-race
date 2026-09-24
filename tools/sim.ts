@@ -1,67 +1,62 @@
-// Headless check that CPUs of every difficulty can finish every kind of course: the fixed
-// stages, the tutorial, the test courses, today's daily course, Endless stages and random courses.
-// Usage: npm run sim -- [endless=25] [random=25] [cpusPerDifficulty=3]
+// Headless check that every kind of course can be finished: the fixed stages, the tutorial, the
+// test courses, daily courses, Endless stages and random courses, each played by the scripted
+// player the tests use (tests/support/bot.ts). Also checks the tutorial's CPU finishes it.
+// Usage: npm run sim -- [endless=25] [random=25] [days=10]
 import { CFG } from '../src/shared/config';
 import buildCourse from '../src/shared/course/build';
 import {
   RANDOM_BASE, STAGES, TEST_STAGES, TUTORIAL, dailyStage, stageSections, today,
 } from '../src/shared/course/stages';
-import { DIFFICULTIES } from '../src/shared/cpu/personality';
-import type { Difficulty } from '../src/shared/cpu/personality';
 import CpuRacer from '../src/shared/cpu/racer';
+import botRun from '../tests/support/bot';
 
 /** Seconds: the room's race limit. */
 const LIMIT = 240;
+const DAY_MS = 86400000;
+const TUTORIAL_CPUS = 20;
 
-type Outcome = { ok: true; time: number } | { ok: false; why: string };
-
-function race(stage: number, difficulty: Difficulty, seed: number): Outcome {
-  const course = buildCourse(stage);
-  const cpu = new CpuRacer(course, { seed, difficulty, color: '#000' });
-  for (let t = 0; t < LIMIT && cpu.finishTime === null; t += CFG.DT) {
-    cpu.step(CFG.DT, t);
-    if (!Number.isFinite(cpu.runner.x) || !Number.isFinite(cpu.runner.y)) return { ok: false, why: 'NaN' };
-  }
-  if (cpu.finishTime !== null) return { ok: true, time: cpu.finishTime };
-  const { x } = cpu.runner;
-  const at = course.sections.find((s) => x >= s.from - 60 && x <= s.to + 60);
-  return { ok: false, why: `stuck at ${at ? at.label : `x=${Math.round(x)}`}` };
-}
-
-const [endless = 25, random = 25, perDifficulty = 3] = process.argv.slice(2).map(Number);
+const [endless = 25, random = 25, days = 10] = process.argv.slice(2).map(Number);
+const firstDay = Date.parse(`${today()}T00:00:00Z`);
 const stages = [
   ...STAGES.map((_, i) => i),
   TUTORIAL,
   ...Object.keys(TEST_STAGES).map(Number),
-  dailyStage(today()),
+  ...Array.from({ length: days }, (_, i) => dailyStage(new Date(firstDay + i * DAY_MS).toISOString().slice(0, 10))),
   ...Array.from({ length: endless }, (_, i) => STAGES.length + i),
   ...Array.from({ length: random }, (_, i) => RANDOM_BASE + 7919 * i + 13),
 ];
 
+/** Where on the course a run stopped, for the report. */
+function whereStuck(stage: number, x: number): string {
+  const at = buildCourse(stage).sections.find((s) => x >= s.from - 60 && x <= s.to + 60);
+  return at ? at.label : `x=${Math.round(x)}`;
+}
+
 let failures = 0;
-let runs = 0;
-const times: Record<string, (number | null)[]> = {};
+const times: number[] = [];
 stages.forEach((stage) => {
-  const problems: string[] = [];
-  DIFFICULTIES.forEach((difficulty) => {
-    for (let k = 0; k < perDifficulty; k += 1) {
-      const outcome = race(stage, difficulty, stage * 31 + k);
-      runs += 1;
-      times[difficulty] = [...(times[difficulty] ?? []), outcome.ok ? outcome.time : null];
-      if (!outcome.ok) {
-        failures += 1;
-        problems.push(`${difficulty}#${k} ${outcome.why}`);
-      }
-    }
-  });
-  if (problems.length) {
-    console.log(`stage ${stage} FAIL ${problems.join('; ')}\n    ${stageSections(stage).map((s) => s.type).join(',')}`);
+  const run = botRun(buildCourse(stage), LIMIT);
+  if (run.finished) {
+    times.push(run.time);
+    return;
   }
+  failures += 1;
+  console.log(`stage ${stage} FAIL: not finished in ${LIMIT} s\n    ${stageSections(stage).map((s) => s.type).join(',')}`);
 });
-Object.entries(times).forEach(([difficulty, list]) => {
-  const ok = list.filter((t): t is number => t !== null);
-  const mean = ok.reduce((a, t) => a + t, 0) / ok.length;
-  console.log(`${difficulty.padEnd(7)} finished ${ok.length}/${list.length} mean ${mean.toFixed(1)}s`);
-});
-console.log(failures ? `${failures} of ${runs} runs failed` : `all ${runs} runs finished`);
+const mean = times.reduce((a, t) => a + t, 0) / (times.length || 1);
+console.log(`player finished ${times.length}/${stages.length} courses, mean ${mean.toFixed(1)}s`);
+
+// The tutorial's CPU (a new personality each race) must be able to finish it too.
+const tutorial = buildCourse(TUTORIAL);
+let cpuFinished = 0;
+for (let seed = 1; seed <= TUTORIAL_CPUS; seed += 1) {
+  const cpu = new CpuRacer(tutorial, { seed, color: '#000' });
+  for (let t = 0; t < LIMIT && cpu.finishTime === null; t += CFG.DT) cpu.step(CFG.DT, t);
+  if (cpu.finishTime !== null) cpuFinished += 1;
+  else console.log(`tutorial CPU seed ${seed} FAIL: stuck at ${whereStuck(TUTORIAL, cpu.runner.x)}`);
+}
+console.log(`tutorial CPU finished ${cpuFinished}/${TUTORIAL_CPUS}`);
+failures += TUTORIAL_CPUS - cpuFinished;
+
+console.log(failures ? `${failures} failed` : 'all finished');
 process.exitCode = failures ? 1 : 0;

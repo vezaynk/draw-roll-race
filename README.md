@@ -1,8 +1,8 @@
 # Draw Roll Race
 
 A browser game in which you draw the arms and legs of a stick runner. Each limb
-spins around its joint like a wheel. You race CPUs or friends across obstacle
-courses and can redraw your limbs at any time during a race.
+spins around its joint like a wheel. You race the clock, your own ghost or friends
+across obstacle courses and can redraw your limbs at any time during a race.
 
 Live at <https://draw-roll-race.k.workers.dev>.
 
@@ -13,7 +13,7 @@ Online rooms and the daily leaderboard need the Cloudflare Worker in this repo:
 npm install
 npm run dev        # http://localhost:8787
 npm run deploy     # to your Cloudflare account (run `npx wrangler login` first)
-npm test           # type check, unit tests, CPU course simulation, browser tests
+npm test           # type check, unit tests, course simulation, browser tests
 ```
 
 ## How to play
@@ -34,11 +34,14 @@ npm test           # type check, unit tests, CPU course simulation, browser test
   above a spike pit too wide to vault. They are ordinary solid blocks: an arm
   long enough to reach them, or hooked at the end, catches their edges and
   carries you across. `npx tsx tools/blocks.ts` compares arm shapes.
+- **Double-tap** (or double-click) the pad to clear the limb nearest your tap.
+  Mid-race, your runner carries on without it.
 - **Spikes** shatter any limb that touches them. Draw a new one: a fresh limb
   is safe from spikes for a second, so you can climb back out.
 - The game opens on today's **daily course**, ready to race. The **tutorial**
-  shows a tip before each obstacle (new players are pointed to it); elsewhere,
-  a tip appears the first time you meet each obstacle.
+  shows a tip before each obstacle (new players are pointed to it) and is the
+  only place with a CPU to race against; elsewhere, a tip appears the first
+  time you meet each obstacle.
 - There are three fixed stages. After the last one, Endless mode generates new
   courses that get longer and harder.
 - Before a race, buttons above the drawing pad open the **Daily course**, the
@@ -58,7 +61,6 @@ shown to other players, so strategies stay private.
 
 - **Your player:** your name, and passkeys to keep your player on any device (see
   [Players and passkeys](#players-and-passkeys)).
-- **Solo opponents:** 0–7 CPUs at easy, normal, hard or mixed difficulty.
 - **Race your best run:** your fastest run on each course comes back as a
   see-through "ghost" to beat.
 - Sound effects, vibration on phones, and a small, normal or large drawing
@@ -77,13 +79,12 @@ screen. You can:
 - **Join with a code** that a friend gave you.
 - **Browse public rooms** and join one.
 
-A room holds up to 8 racers, people and CPUs combined. The host fills open
-slots with CPUs and picks the course (Stage 1–3, a random generated course, or
+A room holds up to 8 people. The host picks the course (Stage 1–3, a random generated course, or
 the same course again). The host can start the race, or everyone can tap
 **I'm ready**: when every person in the room is ready, the race starts by
 itself. Everyone gets a 3-2-1 countdown. Other racers appear as see-through runners
-with their names above them. When every person has finished or given up,
-CPUs still racing get up to 10 more seconds, then the results appear. Anyone
+with their names above them. When every person has finished or given up, the
+results appear. Anyone
 who joins mid-race watches and joins the next one; the camera follows the
 leader, or tap **Watching … · next** to follow someone else. If your
 connection drops, you rejoin within a minute as the same racer and keep racing.
@@ -98,8 +99,6 @@ message in the lobby.
 - Each browser runs the physics for its own runner and sends its position
   about 15 times a second. Other browsers draw everyone 120 ms behind real time
   so the motion can be smoothed. Runners don't collide with each other.
-- The room (a Durable Object) runs the CPUs with the same physics and CPU code
-  the browser uses, so they keep racing whoever is watching.
 - Every finish is checked by replaying it, in rooms as on the daily course
   (below). A finish sends what the player drew at which physics step; the room
   lists it at once with a spinner, replays it, then marks it ✅ (the replay's
@@ -147,21 +146,21 @@ message in the lobby.
 - The player and their daily scores follow the passkey; other progress (best times,
   unlocked stages, ghosts) stays on each device.
 
-### CPUs and generated courses
+### The tutorial CPU and generated courses
 
-- Every CPU gets a personality from its seed: how fast its limbs spin, how
-  quickly it reacts, how far ahead it looks, how often it picks the wrong
-  shape, and its own versions of each shape. When stuck for 3 seconds, it tries
-  the right shape for where it is, then the others. When spikes break a limb,
-  it redraws it after its reaction time.
+- The tutorial's CPU gets a personality from a random seed: how fast its limbs
+  spin (slowly), how quickly it reacts, how far ahead it looks, and its own
+  versions of each shape. When stuck for 3 seconds, it tries the right shape
+  for where it is, then the others. When spikes break a limb, it redraws it.
 - Generated courses vary each obstacle's sizes within ranges that
-  `tools/sim.ts` checks CPUs of every difficulty can finish.
+  `tools/sim.ts` checks a scripted player (the tests' `tests/support/bot.ts`)
+  can finish.
 
 ## Deploys and previews
 
 `.github/workflows/deploy.yml`:
 
-- **Every pull request and push:** type check, unit tests, the CPU course
+- **Every pull request and push:** type check, unit tests, the course
   simulation, a Worker build, and the browser tests (`tests/e2e`, run against
   a local Worker).
 - **Pull requests from this repository:** a `wrangler preview` deployment named
@@ -187,7 +186,7 @@ TypeScript throughout, written to the Airbnb style guide's principles (no linter
     generated courses (`stages.ts`), terrain building (`build.ts`), lookups (`queries.ts`) and
     obstacle tips (`tips.ts`).
   - `runner.ts` (the stick figure and its spinning limbs), `physics.ts` (the fixed-step
-    physics), `replay.ts` (stepping a player's run, and replaying recorded runs), `cpu/` (CPU personalities and the `CpuRacer`) and `protocol.ts` (messages between browsers and rooms).
+    physics), `replay.ts` (stepping a player's run, and replaying recorded runs), `cpu/` (the tutorial's CPU racer) and `protocol.ts` (messages between browsers and rooms).
 - `src/client/`: the game in the browser, bundled by esbuild into `public/app.js`.
   - `main.ts` boots it. `state.ts` holds the game state and the hooks online play uses.
   - `race.ts` (the race loop), `pad.ts` (drawing), `hud.ts`, `results.ts`, `controls.ts`,
@@ -196,15 +195,15 @@ TypeScript throughout, written to the Airbnb style guide's principles (no linter
   - `online/`: the connection, the Online menu, the lobby, and other racers.
 - `src/worker/`: the Cloudflare Worker.
   - `index.ts` (routes), `room.ts` (the `RaceRoom` Durable Object), `roomState.ts`,
-    `cpuSimulation.ts` (runs a room's CPUs), `directory.ts` (the public room list),
+    `directory.ts` (the public room list),
     `daily.ts` (the leaderboard), `auth.ts` (passkeys), `players.ts` (players and sessions),
     `db.ts` (the D1 tables), `verify.ts` (checks a run by replaying it), `runCheck.ts` (the `RunCheck` Durable Object that replays
     runs), `moderation.ts`, `http.ts`, `env.ts`.
-- `tools/sim.ts`: checks that CPUs finish every kind of course
-  (`npm run sim -- [endless] [random] [cpusPerDifficulty]`).
+- `tools/sim.ts`: checks that every kind of course can be finished, and that the tutorial CPU
+  finishes the tutorial (`npm run sim -- [endless] [random] [days]`).
 - `tests/unit/`: fast tests of the shared code (`npm run test:unit`): replays match exactly,
   course generation and the physics haven't changed by accident, limb encoding,
-  moderation, CPU personalities.
+  moderation, the tutorial CPU.
 - `tests/e2e/`: browser tests (`npm run test:e2e` starts a local Worker with the short test
   courses enabled).
 - `tests/support/bot.ts`: a scripted player that records runs like the game does.

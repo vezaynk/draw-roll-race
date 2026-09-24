@@ -1,4 +1,4 @@
-// Seeded random numbers, so every browser and the server build the same courses and CPUs.
+// Seeded random numbers, so every browser and the server build the same courses.
 // xorshift and FNV hashing are bit operations by definition.
 
 export type Rand = () => number;

@@ -1,7 +1,6 @@
 // Progress and options saved in the browser. Storage can be missing or blocked (private
 // windows), so every access is wrapped and the game works without it.
 import { TUTORIAL } from '../shared/course/stages';
-import type { Difficulty } from '../shared/cpu/personality';
 import { playerHash } from '../shared/identity';
 import type { SectionType } from '../shared/types';
 import { randomId } from './dom';
@@ -17,8 +16,6 @@ export interface SaveData {
   unlocked: number;
   /** Best times by course key (stage number, or "daily:<day>"). */
   best: Record<string, number>;
-  cpuCount: number;
-  cpuDifficulty: Difficulty | 'mixed';
   sound: boolean;
   vibrate: boolean;
   ghost: boolean;
@@ -40,8 +37,6 @@ const DEFAULTS: SaveData = {
   stage: 0,
   unlocked: 0,
   best: {},
-  cpuCount: 1,
-  cpuDifficulty: 'normal',
   sound: true,
   vibrate: true,
   ghost: true,

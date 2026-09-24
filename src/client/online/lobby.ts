@@ -1,4 +1,4 @@
-// The room lobby card: room name and code, racers, CPU slots, results and host controls.
+// The room lobby card: room name and code, racers, results and host controls.
 import { MAX_RACERS } from '../../shared/protocol';
 import type { RaceResult, RoomInfo } from '../../shared/protocol';
 import { hasLimbs } from '../../shared/limbs';
@@ -11,7 +11,6 @@ export interface LobbyRacer {
   name: string;
   color: string;
   limbs: EncodedLimbs | null;
-  difficulty?: string;
 }
 
 export interface LobbyView {
@@ -21,10 +20,8 @@ export interface LobbyView {
   yourName: string;
   youDrew: boolean;
   people: LobbyRacer[];
-  cpus: LobbyRacer[];
   /** Name of the course the next race uses. */
   nextCourse: string;
-  onRemoveCpu: (id: string) => void;
 }
 
 export function showLobby(show: boolean): void {
@@ -53,15 +50,13 @@ function racerRow(
   name: string,
   tags: HTMLElement[],
   note: string,
-  extra?: HTMLElement | null,
 ) {
   const row = el('li');
   row.append(swatch(color), el('span', 'pname', name), ...tags, el('span', 'drawn', note));
-  if (extra) row.append(extra);
   return row;
 }
 
-function renderRacers(v: LobbyView, isHost: boolean, racing: boolean): void {
+function renderRacers(v: LobbyView, racing: boolean): void {
   const hostId = v.room?.hostId;
   const readyIds = v.room?.ready ?? [];
   const drawn = (drew: boolean) => (drew ? 'ready to roll' : 'no limbs yet');
@@ -72,16 +67,6 @@ function renderRacers(v: LobbyView, isHost: boolean, racing: boolean): void {
   const rows = [
     racerRow(COLORS.player, v.yourName || 'You', [tag('you'), ...tags(v.you)], drawn(v.youDrew)),
     ...v.people.map((p) => racerRow(p.color, p.name, tags(p.id), drawn(hasLimbs(p.limbs)))),
-    ...v.cpus.map((c) => {
-      let remove: HTMLElement | null = null;
-      if (isHost && !racing) {
-        remove = el('button', 'remove-cpu', '✕');
-        remove.setAttribute('type', 'button');
-        remove.setAttribute('aria-label', `Remove ${c.name}`);
-        remove.addEventListener('click', () => v.onRemoveCpu(c.id));
-      }
-      return racerRow(c.color, c.name, [tag('cpu')], c.difficulty ?? '', remove);
-    }),
   ];
   byId('player-list').replaceChildren(...rows);
 }
@@ -110,7 +95,7 @@ function verifyMark(r: RaceResult): HTMLElement | null {
 
 function resultTime(r: RaceResult): string {
   if (r.time !== null) return `${r.time.toFixed(2)} s`;
-  return r.dnf ? 'did not finish' : 'gave up';
+  return 'gave up';
 }
 
 /** Result rows (place, colour, name, check mark, time), for the lobby and the results card. */
@@ -131,7 +116,6 @@ export function resultRows(results: RaceResult[], you: string | null): HTMLEleme
     );
     const mark = verifyMark(r);
     if (mark) row.append(mark);
-    if (r.cpu) row.append(tag('cpu'));
     row.append(el('span', 'rtime', resultTime(r)));
     return row;
   });
@@ -148,8 +132,7 @@ export function renderLobby(v: LobbyView): void {
   const { room } = v;
   const isHost = !!room?.hostId && room.hostId === v.you;
   const racing = room?.phase === 'racing';
-  const racers = 1 + v.people.length + v.cpus.length;
-  const full = racers >= MAX_RACERS;
+  const racers = 1 + v.people.length;
 
   byId('room-name').textContent = room?.name || `Room ${v.code}`;
   const badge = byId('room-visibility');
@@ -157,16 +140,12 @@ export function renderLobby(v: LobbyView): void {
   badge.classList.toggle('public', !!room?.isPublic);
   byId('racer-count').textContent = `${racers} / ${MAX_RACERS} racers`;
 
-  renderRacers(v, isHost, racing);
+  renderRacers(v, racing);
   renderResults(v, racing);
 
   // During a race the card shrinks to status and results, so the course stays visible.
   byId('lobby').classList.toggle('compact', racing);
   byId('host-controls').hidden = !isHost || racing;
-  byId('cpu-controls').hidden = !isHost || racing;
-  const addCpu = byId<HTMLButtonElement>('add-cpu');
-  addCpu.disabled = full;
-  addCpu.title = full ? 'The room is full' : '';
   byId('visibility-btn').textContent = room?.isPublic ? 'Make private' : 'Make public';
   byId<HTMLButtonElement>('start-btn').disabled = racing;
 
@@ -185,6 +164,6 @@ export function renderLobby(v: LobbyView): void {
     if (readyCount && people > 1) setStatus(`${readyCount} of ${people} ready. The race starts when everyone is.`);
     else if (!isHost) setStatus('Draw your runner and tap “I’m ready”. The host can also start the race.');
     else if (racers > 1) setStatus('Draw your runner, pick a course, then start or wait until everyone is ready.');
-    else setStatus('Invite friends with the link, or add CPUs to fill the open slots.');
+    else setStatus('Invite friends with the link to race together.');
   }
 }

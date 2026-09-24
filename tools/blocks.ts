@@ -1,11 +1,8 @@
 // Prototype check for hanging blocks (test course 992): which arm shapes get a runner across a
-// spike pit by catching the blocks above it, compared with the same pit without blocks, and
-// whether CPUs (using their climbing arm) finish.
+// spike pit by catching the blocks above it, compared with the same pit without blocks.
 // Usage: npx tsx tools/blocks.ts
 import { CFG, FIG } from '../src/shared/config';
 import buildCourse from '../src/shared/course/build';
-import { DIFFICULTIES } from '../src/shared/cpu/personality';
-import CpuRacer from '../src/shared/cpu/racer';
 import { normalizeStroke } from '../src/shared/limbs';
 import { POSES } from '../src/shared/poses';
 import { runnerAtStart, stepPlayer } from '../src/shared/replay';
@@ -62,12 +59,3 @@ shapes.forEach(([name, arm]) => {
   console.log(name.padEnd(22), cross(withBlocks, arm).padEnd(18), cross(noBlocks, arm));
 });
 
-DIFFICULTIES.forEach((difficulty) => {
-  let finished = 0;
-  for (let seed = 1; seed <= 20; seed += 1) {
-    const cpu = new CpuRacer(withBlocks, { seed, difficulty, color: '' });
-    for (let t = 0; t < 120 && cpu.finishTime === null; t += CFG.DT) cpu.step(CFG.DT, t);
-    if (cpu.finishTime !== null) finished += 1;
-  }
-  console.log(`CPUs (${difficulty}): ${finished}/20 finish`);
-});

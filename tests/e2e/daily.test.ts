@@ -1,4 +1,4 @@
-// The daily course on arrival, solo options (opponents), best-run ghost, and the daily leaderboard.
+// The daily course on arrival, the tutorial's CPU, best-run ghost, and the daily leaderboard.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import buildCourse from '../../src/shared/course/build';
@@ -23,24 +23,19 @@ test('the daily course is ready on arrival, and new players are pointed to the t
   await ctx.close();
 });
 
-test('opponents from Options race, and your best run comes back as a ghost', async () => {
+test('only the tutorial has a CPU; your best run comes back as a ghost', async () => {
   const p = await newPlayer(browser, 'Gus', { width: 1280, height: 800 });
   await p.goto(`${BASE}?stage=990`);
-  await p.click('#menu-btn');
-  await p.selectOption('#opt-cpus', '3');
-  await p.selectOption('#opt-difficulty', 'mixed');
-  await p.click('#options-close');
+  assert.equal(await p.locator('#opt-cpus, #opt-difficulty').count(), 0, 'no CPU options');
 
   await drawWheel(p);
   await p.waitForTimeout(500);
-  assert.equal(await p.evaluate(() => document.querySelectorAll('#progress .dot.cpu:not([hidden])').length), 3);
-  await waitForText(p, '#result', /You win|You finished|Finished/, 60000);
+  assert.equal(await p.evaluate(() => window.drr.state.cpu), null, 'no CPU outside the tutorial');
+  await waitForText(p, '#result', /Finished/, 60000);
   assert.match(await text(p, '#result-best'), /First finish|New best|Best/);
 
-  // Race the same course again: the ghost of the first run appears. If a CPU won, the main
-  // button is "Retry" and does that; otherwise "Race this course again" does.
-  const again = await p.isVisible('#again-btn') ? '#again-btn' : '#next-btn[data-action="again"]';
-  await p.click(again);
+  // Race the same course again: the ghost of the first run appears.
+  await p.click('#again-btn');
   await p.waitForTimeout(600);
   const ghostShown = await p.evaluate(() => document.querySelector<HTMLElement>('#progress .dot.ghost')?.hidden === false);
   assert.equal(ghostShown, true, 'ghost dot visible');
@@ -126,6 +121,18 @@ test('the daily course names the leader but never shows their run', async () => 
   await p.waitForTimeout(600);
   // A new player has no best run here, and nobody else's run is shown.
   assert.equal(await p.evaluate(() => window.drr.state.ghosts.length), 0, 'no ghosts');
+  assert.deepEqual(p.errors, []);
+  await p.context().close();
+});
+
+test('the tutorial races one CPU', async () => {
+  const p = await newPlayer(browser, 'Tia', { width: 1280, height: 800 });
+  await p.goto(BASE);
+  await p.click('#start-tutorial');
+  await drawWheel(p);
+  await p.waitForTimeout(500);
+  assert.equal(await p.evaluate(() => document.querySelectorAll('#progress .dot.cpu:not([hidden])').length), 1);
+  assert.equal(await p.evaluate(() => window.drr.state.cpu !== null), true);
   assert.deepEqual(p.errors, []);
   await p.context().close();
 });

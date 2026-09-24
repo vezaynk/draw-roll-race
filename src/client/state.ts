@@ -14,9 +14,9 @@ export interface GameState {
   course: Course;
   limbs: Limbs;
   player: Runner | null;
-  /** Solo CPU racers. */
-  cpus: CpuRacer[];
-  /** When the first CPU finished (null until then). */
+  /** The CPU racing with you in the tutorial (the only place with a CPU). */
+  cpu: CpuRacer | null;
+  /** When the CPU finished (null until then). */
   cpuTime: number | null;
   /** Your best run on this course (and the daily leader's), replayed while racing. */
   ghosts: Ghost[];
@@ -41,7 +41,7 @@ export const state: GameState = {
   course: buildCourse(save.stage),
   limbs: emptyLimbs(),
   player: null,
-  cpus: [],
+  cpu: null,
   cpuTime: null,
   ghosts: [],
   recording: null,

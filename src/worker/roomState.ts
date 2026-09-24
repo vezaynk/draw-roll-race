@@ -1,5 +1,5 @@
 // What a room stores between messages (Durable Object storage), and small helpers about it.
-import type { RaceResult, RoomCpu, RoomPhase } from '../shared/protocol';
+import type { RaceResult, RoomPhase } from '../shared/protocol';
 
 /** A player who dropped: they can come back as themselves until `until`. */
 export interface AwayPlayer {
@@ -18,15 +18,11 @@ export interface RoomState {
   stage: number;
   raceId: number;
   startsAt: number;
-  /** Once every person is done, when the CPUs' extra time runs out (0 when not in use). */
-  graceUntil: number;
   hostId: string | null;
   joins: number;
   participants: string[];
   results: RaceResult[];
   lastResults: RaceResult[];
-  cpus: RoomCpu[];
-  cpuSerial: number;
   ready: string[];
   nextStage: number;
   /** Reconnect token -> player who dropped. */
@@ -42,14 +38,11 @@ export function freshRoom(): RoomState {
     stage: 0,
     raceId: 0,
     startsAt: 0,
-    graceUntil: 0,
     hostId: null,
     joins: 0,
     participants: [],
     results: [],
     lastResults: [],
-    cpus: [],
-    cpuSerial: 0,
     ready: [],
     nextStage: 0,
     away: {},
@@ -75,7 +68,6 @@ export function isPlayer(a: Attachment | null | undefined): a is Player {
 export const hasFinished = (room: RoomState, id: string): boolean => room.results
   .some((r) => r.id === id);
 
-export const isCpuId = (id: string): boolean => id.startsWith('cpu-');
 
 /** Rounds a position or angle for the wire. */
 export const wireNumber = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v)

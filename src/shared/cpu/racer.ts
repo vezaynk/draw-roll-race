@@ -1,6 +1,6 @@
 // A CPU racer: notices the next section a little before reaching it, changes shape after its
 // reaction time (sometimes to the wrong one), redraws limbs that spikes broke, and tries other
-// shapes when it gets stuck. Used by solo races, by rooms (server side) and by tools/sim.ts.
+// shapes when it gets stuck. It races with you in the tutorial.
 import { planIndex } from '../course/queries';
 import step from '../physics';
 import { pick } from '../random';
@@ -11,7 +11,7 @@ import type {
   Course, LimbKind, Limbs, Pose, Runner,
 } from '../types';
 import personality from './personality';
-import type { Difficulty, Personality } from './personality';
+import type { Personality } from './personality';
 
 /** Seconds without progress before trying another shape. */
 const STUCK_AFTER = 3;
@@ -19,7 +19,6 @@ const RECOVERY: readonly Pose[] = ['stilts', 'wheel', 'climber', 'mini'];
 
 export interface CpuOptions {
   seed: number;
-  difficulty: Difficulty;
   color: string;
   /** Called when the CPU changes shape or loses limbs (`lost`), with its runner from before. */
   onSwap?: (limbs: Limbs, pose: Pose, lost: LimbKind[] | undefined, before: Runner) => void;
@@ -33,8 +32,6 @@ interface PendingChange {
 
 export default class CpuRacer {
   readonly name: string;
-
-  readonly difficulty: Difficulty;
 
   pose: Pose = 'wheel';
 
@@ -59,9 +56,8 @@ export default class CpuRacer {
   private recoveries = 0;
 
   constructor(private readonly course: Course, private readonly options: CpuOptions) {
-    this.traits = personality(options.seed, options.difficulty);
+    this.traits = personality(options.seed);
     this.name = this.traits.name;
-    this.difficulty = this.traits.difficulty;
     this.limbs = this.traits.shapes.wheel;
     this.runner = createRunner(this.limbs, options.color, this.traits.speed);
     settle(course, this.runner, course.startX);

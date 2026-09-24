@@ -1,5 +1,5 @@
 // The drawing pad: a stick figure template; strokes that start near the shoulder become arms,
-// near the hip become legs.
+// near the hip become legs. A double tap (or double click) clears the limb nearest to it.
 import { FIG } from '../shared/config';
 import { rotateHalfTurn } from '../shared/geometry';
 import { normalizeStroke } from '../shared/limbs';
@@ -15,12 +15,32 @@ import { state } from './state';
 let pad: HTMLCanvasElement;
 let pctx: CanvasRenderingContext2D;
 let stroke: Stroke | null = null;
+/** The last tap (a stroke too short to draw), for spotting double taps. */
+let lastTap: { at: number; p: Point } | null = null;
+
+/** Two taps this close in time (ms) and space (pad units) are a double tap. */
+const DOUBLE_TAP_MS = 400;
+const DOUBLE_TAP_DIST = 30;
 
 /** The joint a stroke starting at p attaches to. */
 function jointFor(p: Point): { kind: LimbKind; joint: Point } {
   const dShoulder = Math.hypot(p.x - FIG.shoulder.x, p.y - FIG.shoulder.y);
   const dHip = Math.hypot(p.x - FIG.hip.x, p.y - FIG.hip.y);
   return dShoulder < dHip ? { kind: 'arm', joint: FIG.shoulder } : { kind: 'leg', joint: FIG.hip };
+}
+
+/** Distance from p to the nearest point of a drawn limb (either half of it). */
+function distanceTo(p: Point, strokes: Stroke[], joint: Point): number {
+  const points = strokes.flatMap((s) => [...s, ...rotateHalfTurn(s, joint)]);
+  return Math.min(...points.map((q) => Math.hypot(p.x - q.x, p.y - q.y)));
+}
+
+/** The drawn limb nearest to p, or null if there are none. */
+function nearestLimb(p: Point): LimbKind | null {
+  const arm = state.limbs.arm.length ? distanceTo(p, state.limbs.arm, FIG.shoulder) : Infinity;
+  const leg = state.limbs.leg.length ? distanceTo(p, state.limbs.leg, FIG.hip) : Infinity;
+  if (arm === Infinity && leg === Infinity) return null;
+  return arm < leg ? 'arm' : 'leg';
 }
 
 export function renderPad(): void {
@@ -76,8 +96,11 @@ function padPoint(e: PointerEvent): Point {
   };
 }
 
-/** Sets up the pad. onDrawn is called after a limb is drawn (state.limbs already updated). */
-export function initPad(onDrawn: () => void): void {
+/**
+ * Sets up the pad. onDrawn is called after a limb is drawn, onCleared after a double tap clears
+ * one (state.limbs already updated).
+ */
+export function initPad(onDrawn: () => void, onCleared: () => void): void {
   pad = byId<HTMLCanvasElement>('pad');
   pctx = pad.getContext('2d') as CanvasRenderingContext2D;
 
@@ -112,9 +135,24 @@ export function initPad(onDrawn: () => void): void {
       state.limbs[kind] = [normalizeStroke(s.map((p) => ({ x: p.x + dx, y: p.y + dy })))];
       onDrawn();
     } else {
-      showHint('Drag to draw a line — a tap is too short');
+      tapped(s[0]);
     }
     renderPad();
+  };
+
+  /** A tap: the second of two quick taps in the same place clears the nearest limb. */
+  const tapped = (p: Point) => {
+    const now = performance.now();
+    const double = lastTap && now - lastTap.at < DOUBLE_TAP_MS
+      && Math.hypot(p.x - lastTap.p.x, p.y - lastTap.p.y) < DOUBLE_TAP_DIST;
+    lastTap = double ? null : { at: now, p };
+    const kind = double ? nearestLimb(p) : null;
+    if (kind) {
+      state.limbs[kind] = [];
+      onCleared();
+    } else if (!double) {
+      showHint('Drag to draw a line. Double-tap a limb to clear it.');
+    }
   };
   pad.addEventListener('pointerup', endStroke);
   pad.addEventListener('pointercancel', endStroke);

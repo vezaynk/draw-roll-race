@@ -10,7 +10,7 @@
     "sim": "tsx tools/sim.ts",
     "test:unit": "node --import tsx --test \"tests/unit/*.test.ts\"",
     "test:e2e": "tsx tests/e2e/run.ts",
-    "test": "npm run typecheck && npm run test:unit && tsx tools/sim.ts 10 10 2 && tsx tests/e2e/run.ts"
+    "test": "npm run typecheck && npm run test:unit && tsx tools/sim.ts 10 10 10 && tsx tests/e2e/run.ts"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20260924.1",

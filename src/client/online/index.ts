@@ -1,5 +1,5 @@
 // Online rooms: joining and leaving, the messages from the room, and the hooks that put other
-// racers into the game. CPU racers are run by the room itself; browsers only draw them.
+// racers into the game.
 import { encodeLimbs, hasLimbs } from '../../shared/limbs';
 import {
   CODE_RE, EMOTES, RANDOM_COURSE, SAME_COURSE,
@@ -43,7 +43,6 @@ const net = {
   you: null as string | null,
   room: null as RoomInfo | null,
   people: new Map<string, RemoteRacer>(),
-  cpus: new Map<string, RemoteRacer>(),
   raceId: 0,
   /** Racing yourself in the current race. */
   racingIn: false,
@@ -79,16 +78,14 @@ function refreshLobby(): void {
     yourName: nameInput().value.trim(),
     youDrew: hasLimbs(state.limbs),
     people: [...net.people.values()],
-    cpus: [...net.cpus.values()],
     nextCourse: courseName(net.room?.nextStage),
-    onRemoveCpu: (id) => send({ type: 'removeCpu', id }),
   });
 }
 
 /** Other racers with positions this race (none between races). */
 function racing() {
   return net.conn && net.room?.phase === 'racing'
-    ? visibleRacers([...net.people.values(), ...net.cpus.values()])
+    ? visibleRacers(net.people.values())
     : [];
 }
 
@@ -144,16 +141,6 @@ function startIdleLoop(): void {
   net.idleRaf = requestAnimationFrame(loop);
 }
 
-/** Keeps what we know about each CPU (limbs, recent positions) across list updates. */
-function setCpus(list: RoomInfo['cpus']): void {
-  const next = new Map<string, RemoteRacer>();
-  list.forEach((c) => {
-    const known = net.cpus.get(c.id) ?? newRacer(c);
-    next.set(c.id, { ...known, ...c, difficulty: c.difficulty });
-  });
-  net.cpus = next;
-}
-
 function watchRace(stage: number): void {
   if (state.racing) {
     stopRace();
@@ -172,11 +159,6 @@ function onWelcome(m: Extract<ServerMessage, { type: 'welcome' }>): void {
   net.room = m.room;
   net.people.clear();
   m.players.filter((p) => p.id !== m.you).forEach((p) => net.people.set(p.id, newRacer(p)));
-  setCpus(m.room.cpus);
-  Object.entries(m.cpuLimbs).forEach(([id, limbs]) => {
-    const cpu = net.cpus.get(id);
-    if (cpu) Object.assign(cpu, { limbs, runner: null });
-  });
   // Show the name the room uses (it replaces names that aren't allowed).
   const me = m.players.find((p) => p.id === m.you);
   if (me) nameInput().value = me.name;
@@ -207,15 +189,13 @@ function onCountdown(m: Extract<ServerMessage, { type: 'countdown' }>): void {
   // The next race is starting: close the last race's card.
   byId('result').hidden = true;
   net.following = null;
-  setCpus(m.cpus);
-  net.cpus.forEach((c) => Object.assign(c, { samples: [], limbs: null, runner: null }));
   net.people.forEach((p) => Object.assign(p, { samples: [] }));
   if (m.participants.includes(net.you ?? '')) {
     state.stage = m.stage;
     resetStage();
     net.racingIn = true;
     showLobby(false);
-    startRace({ cpus: false, countdownMs: m.ms });
+    startRace({ countdownMs: m.ms });
   } else {
     watchRace(m.stage);
   }
@@ -227,12 +207,6 @@ function onResult(m: Extract<ServerMessage, { type: 'result' }>): void {
   net.room.results = [...net.room.results, m.result];
   if (m.result.id !== net.you) {
     toast(m.result.time === null ? `${m.result.name} gave up` : `${m.result.name} finished ${ordinal(m.place ?? 0)}`, 1400);
-  } else if (m.result.time !== null) {
-    const { results } = net.room;
-    const cpusLeft = net.room.participants.some((id) => id.startsWith('cpu-') && !results.some((r) => r.id === id));
-    if (cpusLeft) {
-      setStatus(`You finished ${ordinal(m.place ?? 0)} in ${m.result.time.toFixed(2)} s. CPUs still racing get up to 10 s more.`);
-    }
   }
   refreshLobby();
 }
@@ -268,7 +242,7 @@ function showRaceEnd(results: RaceResult[], stage: number): void {
   heading.className = place === 1 ? 'win' : 'lose';
   byId('result-stage').textContent = stageName(stage);
   byId('result-time').textContent = mine?.time != null && place ? `${mine.time.toFixed(2)} s` : '—';
-  byId('result-cpu').textContent = `${placed.length} of ${results.length} finished`;
+  byId('result-detail').textContent = `${placed.length} of ${results.length} finished`;
   byId('result-best').textContent = '';
   byId('leaderboard').hidden = false;
   byId('lb-title').textContent = 'Race results';
@@ -290,7 +264,6 @@ function onRaceEnd(m: Extract<ServerMessage, { type: 'raceEnd' }>): void {
       phase: 'lobby', lastResults: m.results, results: [], hostId: m.hostId,
     });
   }
-  setCpus(m.cpus);
   if (state.racing) {
     stopRace();
     state.finished = true;
@@ -305,7 +278,7 @@ function onRaceEnd(m: Extract<ServerMessage, { type: 'raceEnd' }>): void {
 }
 
 function onLimbs(m: Extract<ServerMessage, { type: 'limbs' }>): void {
-  const racer = net.people.get(m.id) ?? net.cpus.get(m.id);
+  const racer = net.people.get(m.id);
   if (!racer) return;
   if (m.lost?.length && racer.runner) {
     const pose = sample(racer);
@@ -328,12 +301,6 @@ function handle(m: ServerMessage): void {
       if (racer) pushSample(racer, m.x, m.y, m.a, m.b);
       break;
     }
-    case 'cpuStates':
-      m.s.forEach(([id, x, y, a, b]) => {
-        const cpu = net.cpus.get(id);
-        if (cpu) pushSample(cpu, x, y, a, b);
-      });
-      break;
     case 'join':
       net.people.set(m.player.id, newRacer(m.player));
       toast(`${m.player.name} joined`, 1200);
@@ -367,10 +334,6 @@ function handle(m: ServerMessage): void {
       break;
     case 'emote':
       showEmote(m.id, m.e);
-      break;
-    case 'cpus':
-      setCpus(m.cpus);
-      refreshLobby();
       break;
     case 'notice':
       toast(m.message, 2600);
@@ -420,7 +383,6 @@ function leave(): void {
   net.you = null;
   net.room = null;
   net.people.clear();
-  net.cpus.clear();
   net.racingIn = false;
   net.following = null;
   net.emotes.clear();
@@ -548,10 +510,6 @@ function bindLobbyButtons(): void {
       showEmote(net.you, e);
     });
     bar.append(button);
-  });
-  byId('add-cpu').addEventListener('click', () => {
-    const difficulty = byId<HTMLSelectElement>('cpu-difficulty').value as 'easy' | 'normal' | 'hard';
-    send({ type: 'addCpu', difficulty });
   });
   byId('visibility-btn').addEventListener('click', () => {
     if (net.room) send({ type: 'settings', isPublic: !net.room.isPublic });
