@@ -18,8 +18,8 @@ export interface GameState {
   cpus: CpuRacer[];
   /** When the first CPU finished (null until then). */
   cpuTime: number | null;
-  /** Best run on this course, replayed while racing. */
-  ghost: Ghost | null;
+  /** Your best run on this course (and the daily leader's), replayed while racing. */
+  ghosts: Ghost[];
   /** The run being recorded. */
   recording: Recording | null;
   /** Set while playing the daily course. */
@@ -28,6 +28,8 @@ export interface GameState {
   racing: boolean;
   finished: boolean;
   time: number;
+  /** Physics steps taken this race (daily runs are replayed step by step on the server). */
+  steps: number;
   section: CourseSection | null;
   mode: 'solo' | 'online';
   /** performance.now() when the countdown reaches GO, 0 when there is no countdown. */
@@ -41,13 +43,14 @@ export const state: GameState = {
   player: null,
   cpus: [],
   cpuTime: null,
-  ghost: null,
+  ghosts: [],
   recording: null,
   daily: null,
   tipsShown: {},
   racing: false,
   finished: false,
   time: 0,
+  steps: 0,
   section: null,
   mode: 'solo',
   countdownEnd: 0,

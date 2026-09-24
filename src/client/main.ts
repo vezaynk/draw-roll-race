@@ -1,6 +1,7 @@
 // Boots the game.
 import buildCourse from '../shared/course/build';
 import { TUTORIAL } from '../shared/course/stages';
+import { RunReplay } from '../shared/replay';
 import TIPS from '../shared/course/tips';
 import initControls from './controls';
 import { buildProgress, showHint, updateHud } from './hud';
@@ -15,7 +16,7 @@ import { state } from './state';
 declare global {
   interface Window {
     /** For the browser tests and debugging in the console. */
-    drr: { state: typeof state; buildCourse: typeof buildCourse };
+    drr: { state: typeof state; buildCourse: typeof buildCourse; RunReplay: typeof RunReplay };
   }
 }
 
@@ -34,7 +35,7 @@ function boot(): void {
   updateHud();
   if (state.stage === TUTORIAL) showHint(`Welcome! ${TIPS.bumps}`, 0);
   initOnline();
-  window.drr = { state, buildCourse };
+  window.drr = { state, buildCourse, RunReplay };
 }
 
 boot();

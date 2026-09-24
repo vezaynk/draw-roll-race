@@ -215,6 +215,7 @@ button:disabled { opacity: .5; cursor: default; }
 #lb-list .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #lb-note { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
 #hud .bar .dot.ghost { width: 10px; height: 10px; margin: -5px 0 0 -5px; background: #fff; border-color: rgba(31,36,48,.5); opacity: .8; }
+#hud .bar .dot.ghost.leader { background: #f3d77a; border-color: #b08a1e; }
 
 /* Drawing pad sizes */
 body.pad-small #pad-wrap { width: min(62vw, 300px); }

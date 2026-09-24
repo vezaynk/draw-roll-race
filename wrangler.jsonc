@@ -13,14 +13,16 @@
   "durable_objects": {
     "bindings": [
       { "name": "ROOMS", "class_name": "RaceRoom" },
-      { "name": "DIRECTORY", "class_name": "Directory" }
+      { "name": "DIRECTORY", "class_name": "Directory" },
+      { "name": "RUN_CHECK", "class_name": "RunCheck" }
     ]
   },
   "migrations": [
     { "tag": "v1", "new_sqlite_classes": ["RaceRoom"] },
-    { "tag": "v2", "new_sqlite_classes": ["Directory"] }
+    { "tag": "v2", "new_sqlite_classes": ["Directory"] },
+    { "tag": "v3", "new_sqlite_classes": ["RunCheck"] }
   ],
-  // Daily course leaderboard. The table is created on first use (worker/daily.js).
+  // Daily course leaderboard. The table is created on first use (worker/daily.ts).
   "d1_databases": [
     { "binding": "DB", "database_name": "draw-roll-race", "database_id": "a6c2fe76-1441-49d6-aa68-673ba58ae519" }
   ],
@@ -37,7 +39,8 @@
     "durable_objects": {
       "bindings": [
         { "name": "ROOMS", "class_name": "RaceRoom" },
-        { "name": "DIRECTORY", "class_name": "Directory" }
+        { "name": "DIRECTORY", "class_name": "Directory" },
+        { "name": "RUN_CHECK", "class_name": "RunCheck" }
       ]
     },
     "d1_databases": [

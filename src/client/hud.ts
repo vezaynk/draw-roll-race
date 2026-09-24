@@ -56,7 +56,7 @@ export function updateStageButton(): void {
 
 interface Dots {
   player: HTMLElement;
-  ghost: HTMLElement;
+  ghosts: HTMLElement[];
   cpus: HTMLElement[];
 }
 
@@ -74,8 +74,8 @@ export function buildProgress(): void {
     zone.style.width = `${((s.to - s.from) / span) * 100}%`;
     progress.append(zone);
   });
-  dots = { ghost: el('div', 'dot ghost'), player: el('div', 'dot player'), cpus: [] };
-  progress.append(dots.ghost, dots.player, el('span', 'flag', '🏁'));
+  dots = { ghosts: [], player: el('div', 'dot player'), cpus: [] };
+  progress.append(dots.player, el('span', 'flag', '🏁'));
   byId('stage-label').textContent = stageName(state.stage);
   updateStageButton();
 }
@@ -118,9 +118,18 @@ export function updateHud(): void {
       dot.style.left = at(cpu.runner.x);
     }
   });
-  const ghost = state.racing && state.ghost ? ghostAt(state.ghost, state.time) : null;
-  d.ghost.hidden = !ghost;
-  if (ghost) d.ghost.style.left = at(ghost.x);
+  while (d.ghosts.length < state.ghosts.length) {
+    const dot = el('div', 'dot ghost');
+    progress.insertBefore(dot, d.player);
+    d.ghosts.push(dot);
+  }
+  d.ghosts.forEach((dot, i) => {
+    const ghost = state.ghosts[i];
+    const pose = state.racing && ghost ? ghostAt(ghost, state.time) : null;
+    dot.hidden = !pose;
+    dot.classList.toggle('leader', !!ghost?.leader);
+    if (pose) dot.style.left = at(pose.x);
+  });
   hooks.onHud?.(progress, c.startX, span);
 
   byId('timer').textContent = `${state.time.toFixed(2)} s`;

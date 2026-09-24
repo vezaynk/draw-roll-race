@@ -2,6 +2,7 @@
 import { chromium } from 'playwright';
 import type { Browser, Page } from 'playwright';
 import type buildCourse from '../../src/shared/course/build';
+import type { RunInput, RunReplay } from '../../src/shared/replay';
 import type { Limbs, Runner, Course } from '../../src/shared/types';
 
 /** What the game exposes on window for tests (see src/client/main.ts). */
@@ -11,10 +12,14 @@ declare global {
       state: {
         limbs: Limbs;
         time: number;
+        steps: number;
+        finished: boolean;
         player: Runner | null;
         course: Course;
+        recording: { inputs: RunInput[] } | null;
       };
       buildCourse: typeof buildCourse;
+      RunReplay: typeof RunReplay;
     };
   }
 }

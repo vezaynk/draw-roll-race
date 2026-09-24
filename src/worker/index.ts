@@ -5,8 +5,9 @@ import { Directory } from './directory';
 import type { Env } from './env';
 import { allowed, json } from './http';
 import { RaceRoom } from './room';
+import { RunCheck } from './runCheck';
 
-export { Directory, RaceRoom };
+export { Directory, RaceRoom, RunCheck };
 
 function newCode(): string {
   return [...crypto.getRandomValues(new Uint8Array(5))]
@@ -60,6 +61,7 @@ export default {
     const [, what] = parts;
     if (what === 'health') return json({ ok: true, daily: !!env.DB });
     if (what === 'daily' && parts.length === 2) return daily(request, env);
+    if (what === 'daily' && parts[2] === 'leader' && parts.length === 3) return handleDaily(request, env);
     if (what === 'rooms' && parts.length === 2) {
       return request.method === 'POST' ? createRoomCode(request, env) : listRooms(env);
     }

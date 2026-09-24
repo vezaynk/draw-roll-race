@@ -1,5 +1,6 @@
 import type { Directory } from './directory';
 import type { RaceRoom } from './room';
+import type { RunCheck } from './runCheck';
 
 /** Workers Rate Limiting binding. */
 export interface RateLimiter {
@@ -9,6 +10,8 @@ export interface RateLimiter {
 export interface Env {
   ROOMS: DurableObjectNamespace<RaceRoom>;
   DIRECTORY: DurableObjectNamespace<Directory>;
+  /** Replays daily runs (worker/runCheck.ts). */
+  RUN_CHECK: DurableObjectNamespace<RunCheck>;
   /** Daily leaderboard (optional: without it, /api/daily answers 503). */
   DB?: D1Database;
   CREATE_LIMITER?: RateLimiter;

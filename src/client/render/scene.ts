@@ -89,7 +89,7 @@ export function render(): void {
   drawGround(ctx, c, view);
   drawObstacles(ctx, c, view);
   drawPosts(ctx, c);
-  if (state.racing && state.ghost) drawGhost(ctx, state.ghost, state.time);
+  if (state.racing) state.ghosts.forEach((ghost) => drawGhost(ctx, ghost, state.time));
   state.cpus.forEach((cpu) => drawRunner(ctx, cpu.runner, 0.85));
   hooks.drawWorld?.(ctx);
   if (state.player) drawRunner(ctx, state.player, 1);

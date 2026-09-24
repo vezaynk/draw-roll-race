@@ -2,6 +2,7 @@
 // near the hip become legs.
 import { FIG } from '../shared/config';
 import { rotateHalfTurn } from '../shared/geometry';
+import { normalizeStroke } from '../shared/limbs';
 import type {
   LimbKind, Point, Stroke,
 } from '../shared/types';
@@ -108,7 +109,7 @@ export function initPad(onDrawn: () => void): void {
       const { kind, joint } = jointFor(s[0]);
       const dx = joint.x - s[0].x;
       const dy = joint.y - s[0].y;
-      state.limbs[kind] = [s.map((p) => ({ x: p.x + dx, y: p.y + dy }))];
+      state.limbs[kind] = [normalizeStroke(s.map((p) => ({ x: p.x + dx, y: p.y + dy })))];
       onDrawn();
     } else {
       showHint('Drag to draw a line — a tap is too short');

@@ -33,6 +33,21 @@ export function encodeLimbs(limbs: Limbs): EncodedLimbs {
   return { arm: limbs.arm.map(encodeStroke), leg: limbs.leg.map(encodeStroke) };
 }
 
+/**
+ * A drawn stroke as the game plays it: points about 6 apart, whole numbers, inside the range the
+ * server accepts. The pad stores strokes this way, so packLimbs() can describe them exactly.
+ */
+export function normalizeStroke(stroke: Stroke): Stroke {
+  const clamp = (n: number) => Math.max(-199, Math.min(599, n));
+  return decodeStroke(encodeStroke(stroke).map(clamp));
+}
+
+/** Limbs exactly as they are, for replays (no resampling, unlike encodeLimbs). */
+export function packLimbs(limbs: Limbs): EncodedLimbs {
+  const pack = (s: Stroke) => s.flatMap((p) => [p.x, p.y]);
+  return { arm: limbs.arm.map(pack), leg: limbs.leg.map(pack) };
+}
+
 export function decodeLimbs(limbs: EncodedLimbs | null | undefined): Limbs {
   if (!limbs) return emptyLimbs();
   const decode = (strokes: number[][] = []) => strokes

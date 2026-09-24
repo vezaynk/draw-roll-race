@@ -1,6 +1,7 @@
 // The runner: a stick figure whose drawn limbs spin around the shoulder and hip.
 import { CFG, FIG } from './config';
 import { groundAt } from './course/queries';
+import { cos, sin } from './fmath';
 import { resample, rotateHalfTurn } from './geometry';
 import type {
   Course, Joint, LimbKind, Limbs, Point, Runner, Shattered, Stroke,
@@ -16,8 +17,8 @@ function torsoOutline(): Point[] {
   for (let i = 0; i < 12; i += 1) {
     const a = (i / 12) * Math.PI * 2;
     pts.push({
-      x: FIG.head.x + Math.cos(a) * FIG.head.r,
-      y: FIG.head.y + Math.sin(a) * FIG.head.r,
+      x: FIG.head.x + cos(a) * FIG.head.r,
+      y: FIG.head.y + sin(a) * FIG.head.r,
     });
   }
   return pts;
@@ -90,8 +91,8 @@ export function forEachPoint(body: Runner, visit: PointVisitor): void {
   body.torso.forEach((p) => visit(body.x + p.x, body.y + p.y, null));
   body.joints.forEach((j) => {
     if (!j.active) return;
-    const c = Math.cos(j.angle);
-    const s = Math.sin(j.angle);
+    const c = cos(j.angle);
+    const s = sin(j.angle);
     const ox = body.x + j.ox;
     const oy = body.y + j.oy;
     j.pts.forEach((p) => visit(ox + p.x * c - p.y * s, oy + p.x * s + p.y * c, j));

@@ -13,3 +13,6 @@ export const COLORS = {
 export const CPU_COLORS = ['#3a7bd5', '#2fa36b', '#c9892b', '#9a5bd6', '#e0508f', '#1f9fb0', '#7a8a2e'];
 
 export const GHOST_COLOR = '#8d96a8';
+
+/** The daily leader's ghost. */
+export const LEADER_COLOR = '#c9a23a';

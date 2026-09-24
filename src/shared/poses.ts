@@ -1,5 +1,6 @@
 // Ready-made limb shapes (pad coordinates; every stroke starts at its joint).
 import { FIG } from './config';
+import { cos, sin } from './fmath';
 import type {
   Limbs, Point, Pose, Stroke,
 } from './types';
@@ -9,7 +10,7 @@ export function halfRing(joint: Point, r: number): Stroke {
   const pts: Stroke = [{ x: joint.x, y: joint.y }];
   for (let i = 0; i <= 12; i += 1) {
     const a = (i / 12) * Math.PI;
-    pts.push({ x: joint.x + Math.cos(a) * r, y: joint.y + Math.sin(a) * r });
+    pts.push({ x: joint.x + cos(a) * r, y: joint.y + sin(a) * r });
   }
   return pts;
 }
@@ -17,8 +18,8 @@ export function halfRing(joint: Point, r: number): Stroke {
 /** Hip → tip → hip → tip: mirrored, it becomes a four-spoke cross of length len. */
 export function cross(len: number, tilt: number): Stroke {
   const j = FIG.hip;
-  const c = Math.cos(tilt);
-  const s = Math.sin(tilt);
+  const c = cos(tilt);
+  const s = sin(tilt);
   return [j, { x: j.x - s * len, y: j.y + c * len }, j, { x: j.x + c * len, y: j.y + s * len }];
 }
 

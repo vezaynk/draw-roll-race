@@ -1,3 +1,4 @@
+import { hypot } from './fmath';
 import type { Point, Stroke } from './types';
 
 /** Points along a stroke, `spacing` apart (the first point is kept). */
@@ -9,7 +10,7 @@ export function resample(stroke: Stroke, spacing: number): Point[] {
     let ay = stroke[i - 1].y;
     const bx = stroke[i].x;
     const by = stroke[i].y;
-    let segLen = Math.hypot(bx - ax, by - ay);
+    let segLen = hypot(bx - ax, by - ay);
     while (segLen >= need) {
       const k = need / segLen;
       ax += (bx - ax) * k;

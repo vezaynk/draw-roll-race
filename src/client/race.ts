@@ -1,19 +1,17 @@
 // A race on the current course: starting, the fixed-step loop, spikes, CPUs and finishing.
 import { CFG } from '../shared/config';
 import buildCourse from '../shared/course/build';
-import { groundAt } from '../shared/course/queries';
 import { DIFFICULTIES } from '../shared/cpu/personality';
 import CpuRacer from '../shared/cpu/racer';
 import { hasLimbs } from '../shared/limbs';
-import step from '../shared/physics';
-import {
-  createRunner, settle, shatter, swapLimbs,
-} from '../shared/runner';
+import { runnerAtStart, stepPlayer } from '../shared/replay';
+import { swapLimbs } from '../shared/runner';
 import type { Shattered } from '../shared/types';
 import { COLORS, CPU_COLORS } from './colors';
+import { leaderGhost } from './daily';
 import { byId } from './dom';
 import {
-  loadGhost, recordLimbs, recordSample, startRecording,
+  loadGhost, recordInput, recordLimbs, recordSample, startRecording,
 } from './ghost';
 import {
   buildProgress, hideHint, showHint, toast, updateHud, updateStageButton,
@@ -36,9 +34,7 @@ let countdownShown: number | null = null;
 
 /** A runner at the start line with the current drawing (or none). */
 function playerAtStart() {
-  const runner = createRunner(state.limbs, COLORS.player);
-  settle(state.course, runner, state.course.startX);
-  return runner;
+  return runnerAtStart(state.course, state.limbs, COLORS.player);
 }
 
 /** Back to the start of the current stage, not racing. */
@@ -49,6 +45,7 @@ export function resetStage(): void {
   state.racing = false;
   state.finished = false;
   state.time = 0;
+  state.steps = 0;
   state.cpuTime = null;
   state.section = null;
   buildProgress();
@@ -109,8 +106,8 @@ function finish(): void {
 function tick(): boolean {
   const player = state.player as NonNullable<typeof state.player>;
   state.time += CFG.DT;
-  step(state.course, player, CFG.DT);
-  const broken = shatter(state.course, player, state.limbs);
+  state.steps += 1;
+  const broken = stepPlayer(state.course, player, state.limbs);
   if (broken) onShatter(broken);
   stepCpus();
   const runner = state.player as NonNullable<typeof state.player>;
@@ -118,12 +115,6 @@ function tick(): boolean {
   if (runner.x >= state.course.finishX) {
     finish();
     return false;
-  }
-  // Fell out of the world somehow: put the runner back on the ground.
-  if (runner.y > groundAt(state.course, runner.x) + 400) {
-    settle(state.course, runner, runner.x);
-    runner.vx = 0;
-    runner.vy = 0;
   }
   return true;
 }
@@ -197,9 +188,12 @@ export function startRace({ cpus = true, countdownMs = 0 }: RaceOptions = {}): v
   state.cpus = cpus ? soloCpus() : [];
   state.cpuTime = null;
   state.tipsShown = {};
-  state.ghost = state.mode === 'solo' && save.ghost ? loadGhost(courseKey()) : null;
+  const own = state.mode === 'solo' && save.ghost ? loadGhost(courseKey()) : null;
+  const leader = state.daily && save.ghost ? leaderGhost(state.daily.day) : null;
+  state.ghosts = [own, leader].filter((g) => g !== null);
   state.recording = startRecording(player, state.limbs);
   state.time = 0;
+  state.steps = 0;
   state.racing = true;
   state.finished = false;
   state.countdownEnd = countdownMs ? performance.now() + countdownMs : 0;
@@ -222,7 +216,10 @@ export function onLimbsDrawn(): void {
   sfx('swap');
   if (state.racing && state.player) {
     state.player = swapLimbs(state.course, state.player, state.limbs);
-    if (state.recording) recordLimbs(state.recording, state.time, state.limbs);
+    if (state.recording) {
+      recordLimbs(state.recording, state.time, state.limbs);
+      recordInput(state.recording, state.steps, state.limbs);
+    }
   } else if (state.mode === 'online') {
     // In a room the host starts races; just show the new drawing at the start line.
     state.player = playerAtStart();

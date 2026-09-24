@@ -3,6 +3,7 @@
 import { TUTORIAL, dailyStage, today } from '../shared/course/stages';
 import TIPS from '../shared/course/tips';
 import { hasLimbs } from '../shared/limbs';
+import { loadLeader } from './daily';
 import { byId } from './dom';
 import { DEFAULT_HINT, showHint, toast } from './hud';
 import { resetStage, startRace } from './race';
@@ -21,7 +22,11 @@ export function enterDaily(): void {
   hideResults();
   resetStage();
   toast('Daily course', 1200);
-  showHint('Today’s course is the same for everyone. Draw to start.', 0);
+  const intro = 'Today’s course is the same for everyone. Draw to start.';
+  showHint(intro, 0);
+  loadLeader(day).then((line) => {
+    if (line && state.daily?.day === day && !state.racing) showHint(`${intro} ${line}`, 0);
+  });
 }
 
 export function enterTutorial(): void {

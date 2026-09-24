@@ -1,6 +1,7 @@
 // Turns a stage's sections into terrain: ground and ceiling heights every CFG.STEP units, plus
 // water, surfaces (belts, ice, spikes, bounce pads) and zones (wind, low gravity, roof spikes).
 import { CFG } from '../config';
+import { cos, sin } from '../fmath';
 import type {
   Course, CourseSection, Fluid, PlanStep, SectionParams, SectionType, Surface, Zone,
 } from '../types';
@@ -60,7 +61,7 @@ class TerrainWriter {
 }
 
 /** Half a cosine wave from 0 up to 1 and back over `period`. */
-const bump = (t: number, period: number): number => (1 - Math.cos((2 * Math.PI * t) / period)) / 2;
+const bump = (t: number, period: number): number => (1 - cos((2 * Math.PI * t) / period)) / 2;
 
 /** Builds one section. May return extra facts about it (where a wall starts). */
 type Builder = (writer: TerrainWriter, p: SectionParams) => Pick<CourseSection, 'wallX'> | void;
@@ -69,9 +70,9 @@ const BUILDERS: Record<SectionType, Builder> = {
   rolling(writer, p) {
     const y0 = writer.y;
     const L = p.len;
-    const h = (t: number) => p.amp * (28 * Math.sin(t / 170) + 13 * Math.sin(t / 73 + 0.7)
-      + 6 * Math.sin(t / 37 + 2.4));
-    writer.seg(L, (t) => y0 + Math.sin((Math.PI * t) / L) * h(t));
+    const h = (t: number) => p.amp * (28 * sin(t / 170) + 13 * sin(t / 73 + 0.7)
+      + 6 * sin(t / 37 + 2.4));
+    writer.seg(L, (t) => y0 + sin((Math.PI * t) / L) * h(t));
   },
   bumps(writer, p) {
     const y0 = writer.y;

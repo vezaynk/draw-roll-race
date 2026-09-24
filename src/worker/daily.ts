@@ -1,34 +1,49 @@
 // The daily course leaderboard (D1).
 //
 //   GET  /api/daily?day=YYYY-MM-DD&player=<id>   the day's course, top 20, your best and rank
-//   POST /api/daily { day, player, name, time, trace }
+//   GET  /api/daily/leader?day=YYYY-MM-DD        the fastest run of the day, to race as a ghost
+//   POST /api/daily { day, player, name, time, inputs }
 //
-// Each run comes with a recording of the runner's position ([t, x] pairs). The server rebuilds
-// the day's course and only accepts runs the recording backs up (see shared/validation.ts).
-import buildCourse from '../shared/course/build';
+// A run is sent as what was drawn at which physics step. The server replays it on the day's
+// course with the same physics the game uses (shared/replay.ts) and records the time the replay
+// takes, not the time claimed.
+import { CFG } from '../shared/config';
 import { dailyStage } from '../shared/course/stages';
-import type { Course } from '../shared/types';
-import { traceProblem } from '../shared/validation';
+import { cleanInputs } from '../shared/replay';
+import type { RunInput } from '../shared/replay';
 import type { Env } from './env';
-import { cleanText, json } from './http';
+import { cleanText, json, logError } from './http';
 import { moderateName } from './moderation';
+import type { ReplayProgress } from './runCheck';
 
 const TOP = 20;
 const PLAYER_RE = /^[A-Za-z0-9_-]{16,64}$/;
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DAY_MS = 86400000;
+/** Longest daily run the server replays. */
+const MAX_RUN_SECONDS = 240;
+/** Largest run upload (bytes). */
+const MAX_BODY = 256 * 1024;
 
 let schemaReady: Promise<unknown> | null = null;
+
+/** Adds the column that holds each best run's inputs (tables made before replays lack it). */
+async function addRunColumn(db: D1Database): Promise<void> {
+  const columns = await db.prepare('PRAGMA table_info(daily_scores)').all<{ name: string }>();
+  if (!columns.results.some((c) => c.name === 'run')) {
+    await db.prepare('ALTER TABLE daily_scores ADD COLUMN run TEXT').run();
+  }
+}
 
 /** The table is created on first use, so production, previews and local runs need no setup. */
 function ensureSchema(db: D1Database): Promise<unknown> {
   schemaReady ??= db.batch([
     db.prepare(`CREATE TABLE IF NOT EXISTS daily_scores (
       day TEXT NOT NULL, player TEXT NOT NULL, name TEXT NOT NULL,
-      time REAL NOT NULL, created_at INTEGER NOT NULL,
+      time REAL NOT NULL, created_at INTEGER NOT NULL, run TEXT,
       PRIMARY KEY (day, player))`),
     db.prepare('CREATE INDEX IF NOT EXISTS daily_by_time ON daily_scores (day, time)'),
-  ]).catch((e) => {
+  ]).then(() => addRunColumn(db)).catch((e) => {
     schemaReady = null;
     throw e;
   });
@@ -40,17 +55,6 @@ function openDays(): string[] {
   const now = Date.now();
   const dayOf = (ms: number) => new Date(ms).toISOString().slice(0, 10);
   return [dayOf(now), dayOf(now - DAY_MS)];
-}
-
-const courses = new Map<string, Course>();
-function courseFor(day: string): Course {
-  let course = courses.get(day);
-  if (!course) {
-    if (courses.size > 4) courses.clear();
-    course = buildCourse(dailyStage(day));
-    courses.set(day, course);
-  }
-  return course;
 }
 
 interface Row {
@@ -86,43 +90,93 @@ async function leaderboard(db: D1Database, url: URL): Promise<Response> {
   });
 }
 
+/** The day's fastest run that has inputs saved, for racing against as a ghost. */
+async function leader(db: D1Database, url: URL): Promise<Response> {
+  const asked = url.searchParams.get('day') ?? '';
+  const day = DAY_RE.test(asked) ? asked : openDays()[0];
+  const row = await db.prepare(`SELECT name, time, player, run FROM daily_scores
+    WHERE day = ?1 AND run IS NOT NULL ORDER BY time, created_at LIMIT 1`)
+    .bind(day).first<{ name: string; time: number; player: string; run: string }>();
+  if (!row) return json({ day, leader: null });
+  const player = url.searchParams.get('player') ?? '';
+  return json({
+    day,
+    leader: {
+      name: row.name, time: row.time, you: row.player === player, inputs: JSON.parse(row.run),
+    },
+  });
+}
+
+/**
+ * Times a run by replaying it in a RunCheck Durable Object, a slice at a time. Returns the
+ * replay's finish time, or null if the run never reaches the finish.
+ */
+async function replayTime(env: Env, stage: number, inputs: RunInput[]): Promise<number | null> {
+  const check = env.RUN_CHECK.get(env.RUN_CHECK.newUniqueId());
+  await check.begin(stage, inputs, Math.ceil(MAX_RUN_SECONDS / CFG.DT));
+  let progress: ReplayProgress | null;
+  do {
+    // Each slice waits on the one before it.
+    progress = await check.advance();
+    if (!progress) throw new Error('replay lost its state');
+  } while (!progress.done);
+  return progress.finished ? progress.time : null;
+}
+
 interface Submission {
   day?: unknown;
   player?: unknown;
   name?: unknown;
   time?: unknown;
-  trace?: unknown;
+  inputs?: unknown;
 }
 
 async function submit(env: Env, db: D1Database, request: Request): Promise<Response> {
+  const text = await request.text();
+  if (text.length > MAX_BODY) return json({ error: 'That run is too big to send.' }, 413);
   let body: Submission;
   try {
-    body = await request.json<Submission>();
+    body = JSON.parse(text) as Submission;
   } catch {
     return json({ error: 'Send the run as JSON.' }, 400);
   }
   const day = String(body.day ?? '');
   const player = String(body.player ?? '');
-  const time = Math.round(Number(body.time) * 100) / 100;
   if (!openDays().includes(day)) return json({ error: 'That daily course has closed.' }, 400);
   if (!PLAYER_RE.test(player)) return json({ error: 'Missing player id.' }, 400);
-  const problem = traceProblem(courseFor(day), time, body.trace);
-  if (problem) return json({ error: problem }, 422);
+  const inputs = cleanInputs(body.inputs);
+  if (!inputs) return json({ error: 'The run is missing its recording.' }, 422);
+  let replayed: number | null;
+  try {
+    replayed = await replayTime(env, dailyStage(day), inputs);
+  } catch (e) {
+    logError('daily replay failed', e);
+    return json({ error: 'The server could not check your run. Try again.' }, 503);
+  }
+  if (replayed === null) {
+    return json({ error: 'The server replayed your run and it did not reach the finish.' }, 422);
+  }
+  const time = Math.round(replayed * 100) / 100;
   const name = moderateName(cleanText(body.name, 16), 'Runner');
-  // Keep each player's best time for the day.
-  await db.prepare(`INSERT INTO daily_scores (day, player, name, time, created_at) VALUES (?1, ?2, ?3, ?4, ?5)
+  // Keep each player's best time for the day, with the run that set it.
+  await db.prepare(`INSERT INTO daily_scores (day, player, name, time, created_at, run)
+    VALUES (?1, ?2, ?3, ?4, ?5, ?6)
     ON CONFLICT (day, player) DO UPDATE SET name = excluded.name,
       created_at = CASE WHEN excluded.time < daily_scores.time THEN excluded.created_at ELSE daily_scores.created_at END,
+      run = CASE WHEN excluded.time <= daily_scores.time
+        THEN excluded.run ELSE daily_scores.run END,
       time = MIN(daily_scores.time, excluded.time)`)
-    .bind(day, player, name, time, Date.now()).run();
+    .bind(day, player, name, time, Date.now(), JSON.stringify(inputs)).run();
   env.STATS?.writeDataPoint({ blobs: ['daily', day], doubles: [time], indexes: ['daily'] });
-  return json({ ok: true });
+  return json({ ok: true, time, claimed: Number(body.time) || null });
 }
 
 export default async function handleDaily(request: Request, env: Env): Promise<Response> {
   if (!env.DB) return json({ error: 'The leaderboard is not set up on this server.' }, 503);
   await ensureSchema(env.DB);
-  if (request.method === 'GET') return leaderboard(env.DB, new URL(request.url));
+  const url = new URL(request.url);
+  if (request.method === 'GET' && url.pathname.endsWith('/leader')) return leader(env.DB, url);
+  if (request.method === 'GET') return leaderboard(env.DB, url);
   if (request.method === 'POST') return submit(env, env.DB, request);
   return json({ error: 'Use GET or POST.' }, 405);
 }
