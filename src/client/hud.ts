@@ -140,7 +140,6 @@ export function updateHud(): void {
     const ghost = state.ghosts[i];
     const pose = state.racing && ghost ? ghostAt(ghost, state.time) : null;
     dot.hidden = !pose;
-    dot.classList.toggle('leader', !!ghost?.leader);
     if (pose) dot.style.left = at(pose.x);
   });
   hooks.onHud?.(progress, c.startX, span);

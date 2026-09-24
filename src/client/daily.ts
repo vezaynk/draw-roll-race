@@ -1,11 +1,7 @@
-// Sending daily runs, showing the daily leaderboard on the results card, and the day's leader
-// as a ghost to race against.
-import buildCourse from '../shared/course/build';
-import { dailyStage } from '../shared/course/stages';
-import type { RunInput } from '../shared/replay';
+// Sending daily runs, showing the daily leaderboard on the results card, and naming the day's
+// leader.
 import { canSave, saveWithPasskey } from './account';
-import { replayGhost } from './ghost';
-import type { Ghost, Recording } from './ghost';
+import type { Recording } from './ghost';
 import { byId, el, ordinal } from './dom';
 import { myHash, playerName, save } from './storage';
 
@@ -21,43 +17,24 @@ interface Leader {
   name: string;
   time: number;
   hash: string;
-  inputs: RunInput[];
 }
 
-/** The day's leader as a ghost (null when you lead, or nobody has a replayable run yet). */
-let leader: { day: string; ghost: Ghost | null } | null = null;
-
 /**
- * Fetches the day's fastest run and rebuilds it as a ghost by replaying it. Returns a line
- * describing the leader, or null.
+ * Names the day's fastest runner. Their run itself is never sent (it would give away their
+ * strategy), so the daily course only ever shows your own ghost. Returns a line to show, or null.
  */
 export async function loadLeader(day: string): Promise<string | null> {
   try {
     const res = await fetch(`/api/daily/leader?day=${day}`, { cache: 'no-store' });
     if (!res.ok) return null;
-    const data = await res.json() as { leader: Leader | null };
-    const top = data.leader;
-    if (!top) {
-      leader = { day, ghost: null };
-      return null;
-    }
-    const you = top.hash === await myHash();
-    const ghost = you ? null : replayGhost(buildCourse(dailyStage(day)), top.inputs, `Leader: ${top.name}`);
-    leader = { day, ghost };
-    return you
-      ? `You lead today (${top.time.toFixed(2)} s).`
-      : `Race today’s leader, ${top.name} (${top.time.toFixed(2)} s).`;
+    const { leader } = await res.json() as { leader: Leader | null };
+    if (!leader) return null;
+    return leader.hash === await myHash()
+      ? `You lead today (${leader.time.toFixed(2)} s).`
+      : `Today’s leader: ${leader.name} (${leader.time.toFixed(2)} s).`;
   } catch {
     return null;
   }
-}
-
-/** A fresh copy of the day's leader ghost, if there is one. */
-export function leaderGhost(day: string): Ghost | null {
-  if (leader?.day !== day || !leader.ghost) return null;
-  return {
-    ...leader.ghost, runner: null, limbsAt: -1, cursor: 1,
-  };
 }
 
 function note(text: string, warning = false): void {

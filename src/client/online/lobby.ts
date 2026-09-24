@@ -113,17 +113,15 @@ function resultTime(r: RaceResult): string {
   return r.dnf ? 'did not finish' : 'gave up';
 }
 
-function renderResults(v: LobbyView, racing: boolean): void {
-  const results = (racing ? v.room?.results : v.room?.lastResults) ?? [];
-  byId('results-box').hidden = !results.length;
-  byId('results-title').textContent = racing ? 'This race' : 'Last race';
+/** Result rows (place, colour, name, check mark, time), for the lobby and the results card. */
+export function resultRows(results: RaceResult[], you: string | null): HTMLElement[] {
   let place = 0;
-  const rows = results.map((r) => {
+  return results.map((r) => {
     const row = el('li');
     const failed = r.verify === 'failed';
     const placed = r.time !== null && !failed;
     if (placed) place += 1;
-    const mine = r.id === v.you;
+    const mine = r.id === you;
     const name = el('span', 'pname', mine ? 'You' : r.name);
     if (failed) name.classList.add('struck');
     row.append(
@@ -137,7 +135,13 @@ function renderResults(v: LobbyView, racing: boolean): void {
     row.append(el('span', 'rtime', resultTime(r)));
     return row;
   });
-  byId('results-list').replaceChildren(...rows);
+}
+
+function renderResults(v: LobbyView, racing: boolean): void {
+  const results = (racing ? v.room?.results : v.room?.lastResults) ?? [];
+  byId('results-box').hidden = !results.length;
+  byId('results-title').textContent = racing ? 'This race' : 'Last race';
+  byId('results-list').replaceChildren(...resultRows(results, v.you));
 }
 
 export function renderLobby(v: LobbyView): void {

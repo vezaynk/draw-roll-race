@@ -87,6 +87,7 @@ export default function initControls(): void {
   byId('start-daily').addEventListener('click', () => enterDaily());
   byId('start-tutorial').addEventListener('click', enterTutorial);
   byId('exit-btn').addEventListener('click', exitToStart);
+  byId('result-exit').addEventListener('click', exitToStart);
 
   byId('again-btn').addEventListener('click', () => {
     hideResults();
@@ -96,6 +97,11 @@ export default function initControls(): void {
 
   byId('next-btn').addEventListener('click', () => {
     const action = byId('next-btn').dataset.action as NextAction;
+    if (action === 'lobby') {
+      hideResults();
+      hooks.onReturnToLobby?.();
+      return;
+    }
     if (action === 'stage1') state.stage = 0;
     else if (action === 'next') state.stage += 1;
     hideResults();

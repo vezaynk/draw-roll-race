@@ -15,6 +15,7 @@ declare global {
         steps: number;
         finished: boolean;
         racing: boolean;
+        ghosts: unknown[];
         player: Runner | null;
         course: Course;
         recording: { inputs: RunInput[] } | null;

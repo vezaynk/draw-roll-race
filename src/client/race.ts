@@ -8,7 +8,6 @@ import { runnerAtStart, stepPlayer } from '../shared/replay';
 import { swapLimbs } from '../shared/runner';
 import type { Shattered } from '../shared/types';
 import { COLORS, CPU_COLORS } from './colors';
-import { leaderGhost } from './daily';
 import { byId } from './dom';
 import {
   loadGhost, recordInput, recordLimbs, recordSample, startRecording,
@@ -188,9 +187,9 @@ export function startRace({ cpus = true, countdownMs = 0 }: RaceOptions = {}): v
   state.cpus = cpus ? soloCpus() : [];
   state.cpuTime = null;
   state.tipsShown = {};
+  // Only your own best run comes back as a ghost (never other players', not even on the daily).
   const own = state.mode === 'solo' && save.ghost ? loadGhost(courseKey()) : null;
-  const leader = state.daily && save.ghost ? leaderGhost(state.daily.day) : null;
-  state.ghosts = [own, leader].filter((g) => g !== null);
+  state.ghosts = own ? [own] : [];
   state.recording = startRecording(player, state.limbs);
   state.time = 0;
   state.steps = 0;

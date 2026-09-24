@@ -8,8 +8,8 @@ import { sfx } from './sound';
 import { state } from './state';
 import { persist, save } from './storage';
 
-/** What the main button on the results card does. */
-export type NextAction = 'next' | 'again' | 'stage1';
+/** What the main button on the results card does ('lobby': back to the room, online). */
+export type NextAction = 'next' | 'again' | 'stage1' | 'lobby';
 
 /** Key for best times and ghosts: the stage, or the daily course's day. */
 export function courseKey(): string {

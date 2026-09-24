@@ -78,3 +78,45 @@ test('Exit in a room gives up the race, leaves the room and goes back to the sta
   assert.deepEqual(p.errors, []);
   await p.context().close();
 });
+
+test('the ⚙ button and Options sit above the results card and room panels', async () => {
+  /** Whether Options is the topmost thing where its card is (or what covers it, if not). */
+  const onTop = async (p: Page) => {
+    await p.waitForSelector('#options .card', { state: 'visible' });
+    return p.evaluate(() => {
+      const card = document.querySelector('#options .card')!.getBoundingClientRect();
+      const hit = document.elementFromPoint(card.left + card.width / 2, card.top + 20);
+      return hit?.closest('#options') ? true : `covered by ${hit?.tagName}#${hit?.id}.${hit?.className}`;
+    });
+  };
+  const p = await newPlayer(browser, 'Dot');
+  await p.goto(`${BASE}?stage=990`);
+  // The results card covers the game; the gear must still be clickable (Playwright refuses to
+  // click covered elements) and Options must open on top of it.
+  await p.evaluate(() => {
+    document.getElementById('result')!.hidden = false;
+  });
+  await p.click('#menu-btn');
+  assert.equal(await onTop(p), true, 'Options above the results card');
+  await p.click('#options-close');
+
+  // Same in a room, with the lobby open.
+  await createRoom(p, { testStage: 990 });
+  await p.waitForSelector('#lobby', { state: 'visible' });
+  await p.click('#menu-btn');
+  assert.equal(await onTop(p), true, 'Options above the lobby');
+  assert.deepEqual(p.errors, []);
+  await p.context().close();
+});
+
+test('the results card has an Exit button back to the start screen', async () => {
+  const p = await newPlayer(browser, 'Eli', { width: 1280, height: 800 });
+  await p.goto(`${BASE}?stage=990`);
+  await drawWheel(p);
+  await p.waitForSelector('#result', { state: 'visible', timeout: 60000 });
+  await p.click('#result-exit');
+  await assertAtStart(p);
+  assert.equal(await shown(p, '#result'), false);
+  assert.deepEqual(p.errors, []);
+  await p.context().close();
+});

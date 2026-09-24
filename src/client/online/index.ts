@@ -4,7 +4,7 @@ import { encodeLimbs, hasLimbs } from '../../shared/limbs';
 import {
   CODE_RE, EMOTES, RANDOM_COURSE, SAME_COURSE,
 } from '../../shared/protocol';
-import type { RoomInfo, ServerMessage } from '../../shared/protocol';
+import type { RaceResult, RoomInfo, ServerMessage } from '../../shared/protocol';
 import { enableAccount } from '../account';
 import { enterDaily } from '../controls';
 import { byId, ordinal } from '../dom';
@@ -20,7 +20,7 @@ import { playerName, setPlayerName } from '../storage';
 import RoomConnection from './connection';
 import type { RoomSetup } from './connection';
 import {
-  renderLobby, setStatus, showLobby,
+  renderLobby, resultRows, setStatus, showLobby,
 } from './lobby';
 import {
   closeMenu, initMenu, openMenu,
@@ -204,6 +204,8 @@ function onCountdown(m: Extract<ServerMessage, { type: 'countdown' }>): void {
   };
   net.raceId = m.raceId;
   net.room.ready = [];
+  // The next race is starting: close the last race's card.
+  byId('result').hidden = true;
   net.following = null;
   setCpus(m.cpus);
   net.cpus.forEach((c) => Object.assign(c, { samples: [], limbs: null, runner: null }));
@@ -248,7 +250,41 @@ function onVerified(m: Extract<ServerMessage, { type: 'verified' }>): void {
   refreshLobby();
 }
 
+/**
+ * The end-of-race card for people who raced: place, time and the room's results, with
+ * "Return to lobby" (no "race again": the host or a ready-up starts the next race) and Exit.
+ */
+function showRaceEnd(results: RaceResult[], stage: number): void {
+  const mine = results.find((r) => r.id === net.you);
+  const placed = results.filter((r) => r.time !== null && r.verify !== 'failed');
+  const place = mine ? placed.indexOf(mine) + 1 : 0;
+  let title = 'Race over';
+  if (place === 1) title = 'You win!';
+  else if (place > 1) title = `You finished ${ordinal(place)}`;
+  else if (mine?.verify === 'failed') title = 'Your run didn’t count';
+  else if (mine) title = 'You gave up';
+  const heading = byId('result-title');
+  heading.textContent = title;
+  heading.className = place === 1 ? 'win' : 'lose';
+  byId('result-stage').textContent = stageName(stage);
+  byId('result-time').textContent = mine?.time != null && place ? `${mine.time.toFixed(2)} s` : '—';
+  byId('result-cpu').textContent = `${placed.length} of ${results.length} finished`;
+  byId('result-best').textContent = '';
+  byId('leaderboard').hidden = false;
+  byId('lb-title').textContent = 'Race results';
+  byId('lb-list').replaceChildren(...resultRows(results, net.you));
+  byId('lb-note').textContent = '';
+  byId('save-score').hidden = true;
+  const next = byId('next-btn');
+  next.textContent = 'Return to lobby';
+  next.dataset.action = 'lobby';
+  byId('again-btn').hidden = true;
+  showLobby(false);
+  byId('result').hidden = false;
+}
+
 function onRaceEnd(m: Extract<ServerMessage, { type: 'raceEnd' }>): void {
+  const raced = !!net.you && !!net.room?.participants.includes(net.you);
   if (net.room) {
     Object.assign(net.room, {
       phase: 'lobby', lastResults: m.results, results: [], hostId: m.hostId,
@@ -262,7 +298,8 @@ function onRaceEnd(m: Extract<ServerMessage, { type: 'raceEnd' }>): void {
   net.racingIn = false;
   byId<HTMLButtonElement>('start-btn').disabled = false;
   setStatus('');
-  showLobby(true);
+  if (raced) showRaceEnd(m.results, state.stage);
+  else showLobby(true);
   startIdleLoop();
   refreshLobby();
 }
@@ -390,6 +427,7 @@ function leave(): void {
   cancelAnimationFrame(net.idleRaf);
   state.mode = 'solo';
   window.history.replaceState(null, '', window.location.pathname);
+  byId('result').hidden = true;
   byId('exit-btn').title = 'Back to the start screen';
   showLobby(false);
   stopRace();
@@ -426,6 +464,10 @@ function installHooks(): void {
     refreshLobby();
   };
   // In a room, Exit gives up any race you are in and leaves the room.
+  hooks.onReturnToLobby = () => {
+    showLobby(true);
+    refreshLobby();
+  };
   hooks.onExit = () => {
     if (net.racingIn) send({ type: 'giveup', r: net.raceId });
     leave();
