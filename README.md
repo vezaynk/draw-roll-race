@@ -13,7 +13,7 @@ Online rooms and the daily leaderboard need the Cloudflare Worker in this repo:
 npm install
 npm run dev        # http://localhost:8787
 npm run deploy     # to your Cloudflare account (run `npx wrangler login` first)
-npm test           # type check, CPU course simulation, browser tests
+npm test           # type check, unit tests, CPU course simulation, browser tests
 ```
 
 ## How to play
@@ -42,7 +42,8 @@ npm test           # type check, CPU course simulation, browser tests
 ## Options (⚙)
 
 - **Today's daily course:** the same generated course for everyone each day
-  (UTC), with a leaderboard of the fastest runs.
+  (UTC), with a leaderboard of the fastest runs. The day's leader races with
+  you as a gold ghost.
 - **Solo opponents:** 0–7 CPUs at easy, normal, hard or mixed difficulty.
 - **Race your best run:** your fastest run on each course comes back as a
   see-through "ghost" to beat.
@@ -62,12 +63,18 @@ When the game is served by the Worker, an **Online** button appears. You can:
 - **Browse public rooms** and join one.
 
 A room holds up to 8 racers, people and CPUs combined. The host fills open
-slots with CPUs and picks the course (Stage 1–3 or a random generated course).
-Everyone gets a 3-2-1 countdown. Other racers appear as see-through runners
+slots with CPUs and picks the course (Stage 1–3, a random generated course, or
+the same course again). The host can start the race, or everyone can tap
+**I'm ready**: when every person in the room is ready, the race starts by
+itself. Everyone gets a 3-2-1 countdown. Other racers appear as see-through runners
 with their names above them. When every person has finished or given up (✕),
 CPUs still racing get up to 10 more seconds, then the results appear. Anyone
-who joins mid-race watches and joins the next one. If your connection drops,
-you rejoin within a minute as the same racer and keep racing.
+who joins mid-race watches and joins the next one; the camera follows the
+leader, or tap **Watching … · next** to follow someone else. If your
+connection drops, you rejoin within a minute as the same racer and keep racing.
+
+Six quick emotes (👋 😂 😮 🔥 👏 😭) pop up as bubbles over your runner, or as a
+message in the lobby.
 
 ## How it works
 
@@ -78,10 +85,18 @@ you rejoin within a minute as the same racer and keep racing.
   the browser uses, so they keep racing whoever is watching.
 - The room builds the course too, and only counts a finish if the player's
   reported positions reached the line at a speed a runner can reach.
-- Daily runs are sent with a recording of the runner's position (ten samples a
-  second). The server rebuilds the day's course and refuses runs that don't
-  start at the start, move impossibly fast, have gaps, miss the finish, or
-  don't match the claimed time.
+- Daily runs are timed by the server. The game records what you drew at which
+  physics step; the server replays those drawings on the day's course with the
+  same physics and records the replay's time, not the time the browser claims.
+  A run that doesn't reach the finish is refused. The replay runs in a
+  `RunCheck` Durable Object, a slice at a time, so no single request uses much
+  CPU time. Each player's best run is kept, and the day's fastest is sent to
+  other players, who rebuild it as the leader ghost by replaying it too.
+- For replays to match, the physics must give identical numbers in every
+  browser and on the server. JavaScript rounds `+ − × ÷` and square roots the
+  same everywhere, but `Math.sin`, `Math.cos` and `Math.hypot` may differ in
+  the last bit between engines, so the shared code uses its own versions
+  (`src/shared/fmath.ts`).
 - Player and room names are checked against a list of blocked words. Creating
   rooms and sending daily runs are rate-limited per network.
 - Race and daily-run numbers can go to Workers Analytics Engine: enable it on
@@ -95,13 +110,14 @@ you rejoin within a minute as the same racer and keep racing.
   the right shape for where it is, then the others. When spikes break a limb,
   it redraws it after its reaction time.
 - Generated courses vary each obstacle's sizes within ranges that
-  `tools/sim.cjs` checks CPUs of every difficulty can finish.
+  `tools/sim.ts` checks CPUs of every difficulty can finish.
 
 ## Deploys and previews
 
 `.github/workflows/deploy.yml`:
 
-- **Every pull request and push:** type check, the CPU course simulation, a Worker build, and the browser tests (`tests/e2e`, run against
+- **Every pull request and push:** type check, unit tests, the CPU course
+  simulation, a Worker build, and the browser tests (`tests/e2e`, run against
   a local Worker).
 - **Pull requests from this repository:** a `wrangler preview` deployment named
   `pr-<number>`, with its own rooms and a separate preview database. Its link is
@@ -117,16 +133,16 @@ The daily leaderboard uses the D1 databases `draw-roll-race` (production) and
 
 ## Code
 
-TypeScript throughout, written to the Airbnb style guide's principles, in three layers:
+TypeScript throughout, written to the Airbnb style guide's principles (no linter), in three layers:
 
 - `src/shared/`: everything the browser, the server and the simulation share, with no DOM or
   Worker dependencies.
-  - `config.ts`, `types.ts`, `random.ts`, `geometry.ts`, `limbs.ts`, `poses.ts`
+  - `config.ts`, `types.ts`, `random.ts`, `fmath.ts`, `geometry.ts`, `limbs.ts`, `poses.ts`
   - `course/`: the obstacle catalogue (`sections.ts`), stages, the tutorial, the daily and
     generated courses (`stages.ts`), terrain building (`build.ts`), lookups (`queries.ts`) and
     obstacle tips (`tips.ts`).
   - `runner.ts` (the stick figure and its spinning limbs), `physics.ts` (the fixed-step
-    physics), `cpu/` (CPU personalities and the `CpuRacer`), `validation.ts` (checks that runs
+    physics), `replay.ts` (stepping a player's run, and replaying recorded runs), `cpu/` (CPU personalities and the `CpuRacer`), `validation.ts` (checks that runs
     are possible) and `protocol.ts` (messages between browsers and rooms).
 - `src/client/`: the game in the browser, bundled by esbuild into `public/app.js`.
   - `main.ts` boots it. `state.ts` holds the game state and the hooks online play uses.
@@ -137,11 +153,16 @@ TypeScript throughout, written to the Airbnb style guide's principles, in three 
 - `src/worker/`: the Cloudflare Worker.
   - `index.ts` (routes), `room.ts` (the `RaceRoom` Durable Object), `roomState.ts`,
     `cpuSimulation.ts` (runs a room's CPUs), `directory.ts` (the public room list),
-    `daily.ts` (the leaderboard), `moderation.ts`, `http.ts`, `env.ts`.
+    `daily.ts` (the leaderboard), `runCheck.ts` (the `RunCheck` Durable Object that replays
+    daily runs), `moderation.ts`, `http.ts`, `env.ts`.
 - `tools/sim.ts`: checks that CPUs finish every kind of course
   (`npm run sim -- [endless] [random] [cpusPerDifficulty]`).
+- `tests/unit/`: fast tests of the shared code (`npm run test:unit`): replays match exactly,
+  course generation and the physics haven't changed by accident, limb encoding, validation,
+  moderation, CPU personalities.
 - `tests/e2e/`: browser tests (`npm run test:e2e` starts a local Worker with the short test
   courses enabled).
+- `tests/support/bot.ts`: a scripted player that records runs like the game does.
 
 Wrangler runs `npm run build` before `dev` and `deploy`, so the browser bundle is always
-current. `npm test` runs the type check, simulation and browser tests.
+current. `npm test` runs the type check, unit tests, simulation and browser tests.
