@@ -14,6 +14,19 @@ npm run dev      # http://localhost:8787
 npm run deploy   # to your Cloudflare account (run `npx wrangler login` first)
 ```
 
+### Automatic deploys
+
+`.github/workflows/deploy.yml` runs checks on every pull request and push:
+a syntax check, the CPU course simulation, and a Worker build. Each push to
+`master` that passes them is deployed to Cloudflare Workers. It needs two
+repository secrets (**Settings → Secrets and variables → Actions**):
+
+- `CLOUDFLARE_API_TOKEN`: an API token made from the **Edit Cloudflare
+  Workers** template.
+- `CLOUDFLARE_ACCOUNT_ID`: your account ID, shown in the Cloudflare dashboard.
+
+To deploy without a push, run the workflow from the **Actions** tab.
+
 ## How to play
 
 - Start a stroke near the **hip** to draw legs or near the **shoulder** to draw
