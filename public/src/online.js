@@ -1,7 +1,7 @@
 // Draw Roll Race — online rooms (talks to the Durable Objects in worker/).
 // Every browser runs its own runner's physics; other players are drawn from the
 // positions they send, slightly in the past so their motion can be smoothed.
-// The host's browser also runs the room's CPU racers and sends their positions.
+// CPU racers are run by the room itself (worker/room.js); browsers just draw them.
 (function () {
   'use strict';
   const G = window.DRRGame;
@@ -22,8 +22,6 @@
     cpus: new Map(),         // CPUs: id -> { id, name, color, difficulty, seed, pose, limbs, runner, buf }
     raceId: 0, racingIn: false, spectating: false,
     lastSend: 0, retries: 0, leaving: false, idleRaf: 0,
-    // CPU simulation (host only)
-    drivers: new Map(), goAt: 0, cpuT: 0, cpuRaf: 0, lastCpuSend: 0,
   };
 
   // ---------------- entry points ----------------
@@ -92,8 +90,10 @@
     renderLobby();
   });
 
+  // ?teststage=N starts short test courses (the server only allows them when configured to).
+  const testStage = parseInt(new URLSearchParams(location.search).get('teststage'), 10);
   $('start-btn').addEventListener('click', () => {
-    send({ type: 'start', stage: parseInt($('stage-select').value, 10) });
+    send({ type: 'start', stage: Number.isInteger(testStage) ? testStage : parseInt($('stage-select').value, 10) });
     $('start-btn').disabled = true;
   });
   $('add-cpu').addEventListener('click', () => send({ type: 'addCpu', difficulty: $('cpu-difficulty').value }));
@@ -166,7 +166,7 @@
     state.mode = 'online';
     G.stopRace();
     G.hideResult();
-    history.replaceState(null, '', '?room=' + code);
+    history.replaceState(null, '', '?room=' + code + (Number.isInteger(testStage) ? '&teststage=' + testStage : ''));
     $('room-code').textContent = code;
     $('room-name').textContent = 'Room ' + code;
     $('online-btn').hidden = true;
@@ -181,9 +181,25 @@
     connect(create);
   }
 
+  // One token per tab and room, so a dropped connection or a reload rejoins as the same racer.
+  function roomToken(code) {
+    const key = 'draw-roll-race-token-' + code;
+    try {
+      let t = sessionStorage.getItem(key);
+      if (!t) {
+        const bytes = crypto.getRandomValues(new Uint8Array(18));
+        t = btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, c => ({ '+': '-', '/': '_', '=': '' }[c]));
+        sessionStorage.setItem(key, t);
+      }
+      return t;
+    } catch (e) { return ''; }
+  }
+
   function connect(create) {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
     const q = new URLSearchParams({ name: $('my-name').value.trim() || loadName() });
+    const token = roomToken(net.code);
+    if (token) q.set('token', token);
     if (create) { q.set('public', create.isPublic ? '1' : '0'); if (create.roomName) q.set('room_name', create.roomName); }
     const ws = new WebSocket(proto + '//' + location.host + '/api/rooms/' + net.code + '/ws?' + q);
     net.ws = ws;
@@ -192,7 +208,6 @@
     ws.onclose = () => {
       if (net.ws !== ws || net.leaving) return;
       net.ws = null;
-      stopCpus();
       if (net.retries >= 5) { status('Lost connection to the room. Reload the page to try again.', true); return; }
       const wait = 500 * Math.pow(2, net.retries++);
       status('Reconnecting…', true);
@@ -207,7 +222,6 @@
   function leave() {
     net.leaving = true;
     if (net.ws) net.ws.close(1000, 'leave');
-    stopCpus();
     net.ws = null; net.code = null; net.you = null; net.room = null;
     net.players.clear(); net.cpus.clear();
     net.racingIn = false; net.spectating = false;
@@ -235,11 +249,20 @@
         for (const p of m.players) if (p.id !== m.you) addPlayer(p);
         setCpus(m.room.cpus || []);
         for (const [id, limbs] of Object.entries(m.cpuLimbs || {})) { const c = net.cpus.get(id); if (c) { c.limbs = limbs; c.runner = null; } }
+        // Show the name the room uses (it replaces names that aren't allowed).
         const me = m.players.find(p => p.id === m.you);
-        if (me && !$('my-name').value) $('my-name').value = me.name;
-        if (state.limbs.arm.length || state.limbs.leg.length) send({ type: 'limbs', limbs: encodeLimbs(state.limbs) });
-        if (m.room.phase === 'racing') {
+        if (me) $('my-name').value = me.name;
+        if (state.limbs.arm.length || state.limbs.leg.length) send({ type: 'limbs', limbs: D.encodeLimbs(state.limbs) });
+        const stillRacing = m.resumed && m.room.phase === 'racing' && net.racingIn && net.raceId === m.room.raceId &&
+          (m.room.participants || []).includes(m.you) && !(m.room.results || []).some(r => r.id === m.you);
+        if (stillRacing) {
+          // Back after a dropped connection, mid-race: keep going.
+          status('');
+          G.toast('Reconnected', 1000);
+        } else if (m.room.phase === 'racing') {
           // A race is already running: watch it and join the next one.
+          if (state.racing) { G.stopRace(); state.finished = true; }
+          net.racingIn = false;
           net.raceId = m.room.raceId;
           net.spectating = true; net.racingIn = false;
           G.setStage(m.room.stage);
@@ -260,16 +283,14 @@
         const wasHost = isHost();
         if (net.room) net.room.hostId = m.hostId;
         if (p) G.toast(p.name + ' left', 1200);
-        if (!wasHost && isHost()) {
-          G.toast('You are the host now', 1600);
-          if (net.room.phase === 'racing') adoptCpus();
-        }
+        if (!wasHost && isHost()) G.toast('You are the host now', 1600);
         renderLobby();
         break;
       }
       case 'name': {
         const p = net.players.get(m.id);
         if (p) p.name = m.name;
+        if (m.id === net.you) $('my-name').value = m.name;
         renderLobby();
         break;
       }
@@ -281,20 +302,25 @@
       case 'cpus': setCpus(m.cpus); renderLobby(); break;
       case 'limbs': {
         const p = net.players.get(m.id) || net.cpus.get(m.id);
-        if (p) { p.limbs = m.limbs; p.runner = null; if (m.pose) p.pose = m.pose; }
+        if (!p) break;
+        if (m.lost && m.lost.length && p.runner) {
+          const s = sample(p);
+          if (s) { p.runner.x = s.x; p.runner.y = s.y; G.spawnShards(p.runner, m.lost); }
+        }
+        p.limbs = m.limbs; p.runner = null; if (m.pose) p.pose = m.pose;
         renderLobby();
         break;
       }
+      case 'notice': G.toast(m.message, 2600); status(m.message, true); break;
       case 'countdown': {
         net.room = Object.assign(net.room || {}, { phase: 'racing', stage: m.stage, raceId: m.raceId, participants: m.participants, results: [] });
         net.raceId = m.raceId;
         setCpus(m.cpus || []);
-        for (const c of net.cpus.values()) { c.buf = []; c.limbs = null; c.runner = null; c.pose = 'wheel'; }
+        for (const c of net.cpus.values()) { c.buf = []; c.limbs = null; c.runner = null; }
         for (const p of net.players.values()) p.buf = [];
         G.setStage(m.stage);
         G.resetStage();
-        net.goAt = performance.now() + m.ms;
-        if (isHost()) startCpus(m.ms);
+
         if (m.participants.includes(net.you)) {
           net.racingIn = true; net.spectating = false;
           showLobby(false);
@@ -339,7 +365,6 @@
           net.room.results = [];
           net.room.hostId = m.hostId;
         }
-        stopCpus();
         setCpus(m.cpus || []);
         if (state.racing) { G.stopRace(); state.finished = true; }
         net.racingIn = false; net.spectating = false;
@@ -378,79 +403,10 @@
     if (p.buf.length > 40) p.buf.splice(0, p.buf.length - 40);
   }
 
-  // ---------------- CPUs (run by the host) ----------------
-  function makeDriver(c) {
-    return D.createCpu(state.course, {
-      seed: c.seed, difficulty: c.difficulty, color: c.color,
-      onSwap: (limbs, pose) => { c.pose = pose; send({ type: 'cpuLimbs', id: c.id, pose, limbs: encodeLimbs(limbs) }); },
-    });
-  }
-
-  function startCpus(countdownMs) {
-    stopCpus();
-    for (const c of net.cpus.values()) net.drivers.set(c.id, makeDriver(c));
-    net.cpuT = 0;
-    net.goAt = performance.now() + countdownMs;
-    runCpus();
-  }
-
-  // A new host takes over the CPUs from where they were last seen.
-  function adoptCpus() {
-    stopCpus();
-    const done = new Set((net.room.results || []).map(r => r.id));
-    for (const c of net.cpus.values()) {
-      if (done.has(c.id) || !(net.room.participants || []).includes(c.id)) continue;
-      const drv = makeDriver(c);
-      const s = c.buf[c.buf.length - 1];
-      if (s) drv.placeAt(s.x, s.y, s.a, s.b, c.pose);
-      net.drivers.set(c.id, drv);
-    }
-    net.cpuT = Math.max(0, (performance.now() - net.goAt) / 1000);
-    runCpus();
-  }
-
-  // CPUs run on their own clock, so they keep going after the host finishes or gives up.
-  function runCpus() {
-    cancelAnimationFrame(net.cpuRaf);
-    const tick = () => {
-      if (!net.drivers.size || !net.room || net.room.phase !== 'racing') return;
-      const now = performance.now();
-      if (now >= net.goAt) {
-        const target = Math.min((now - net.goAt) / 1000, net.cpuT + 0.25); // catch up at most 0.25 s per frame
-        while (net.cpuT < target) {
-          net.cpuT += D.CFG.DT;
-          for (const [id, drv] of net.drivers) {
-            drv.step(D.CFG.DT, net.cpuT);
-            if (drv.finishTime !== null && !drv.reported) {
-              drv.reported = true;
-              send({ type: 'cpuFinish', r: net.raceId, id, time: drv.finishTime });
-            }
-          }
-        }
-        if (now - net.lastCpuSend >= SEND_EVERY_MS) {
-          net.lastCpuSend = now;
-          const s = [];
-          for (const [id, drv] of net.drivers) {
-            const rn = drv.runner;
-            s.push([id, rn.x, rn.y, rn.joints[0] ? rn.joints[0].angle : 0, rn.joints[1] ? rn.joints[1].angle : 0]);
-          }
-          send({ type: 'cpuStates', r: net.raceId, s });
-        }
-      }
-      net.cpuRaf = requestAnimationFrame(tick);
-    };
-    net.cpuRaf = requestAnimationFrame(tick);
-  }
-
-  function stopCpus() {
-    cancelAnimationFrame(net.cpuRaf);
-    net.drivers.clear();
-  }
-
   // ---------------- game hooks ----------------
-  hooks.onLimbs = limbs => {
+  hooks.onLimbs = (limbs, lost) => {
     if (!net.code) return;
-    send({ type: 'limbs', limbs: encodeLimbs(limbs) });
+    send({ type: 'limbs', limbs: D.encodeLimbs(limbs), lost });
     renderLobby();
   };
 
@@ -495,14 +451,8 @@
       if (s) out.push({ p, s, runner: runnerFor(p) });
     }
     for (const c of net.cpus.values()) {
-      const drv = net.drivers.get(c.id);
-      if (drv) {
-        const rn = drv.runner; // the host draws its own CPUs directly
-        out.push({ p: c, s: { x: rn.x, y: rn.y }, runner: rn, live: true });
-      } else {
-        const s = sample(c);
-        if (s) out.push({ p: c, s, runner: runnerFor(c) });
-      }
+      const s = sample(c);
+      if (s) out.push({ p: c, s, runner: runnerFor(c) });
     }
     return out;
   }
@@ -517,12 +467,10 @@
   hooks.drawWorld = ctx => {
     if (!net.code) return;
     const labels = [];
-    for (const { p, s, runner: r, live } of others()) {
-      if (!live) {
-        r.x = s.x; r.y = s.y;
-        if (r.joints[0]) r.joints[0].angle = s.a;
-        if (r.joints[1]) r.joints[1].angle = s.b;
-      }
+    for (const { p, s, runner: r } of others()) {
+      r.x = s.x; r.y = s.y;
+      if (r.joints[0]) r.joints[0].angle = s.a;
+      if (r.joints[1]) r.joints[1].angle = s.b;
       G.drawRunner(ctx, r, 0.8);
       labels.push({ text: p.name, color: p.color, x: r.x + r.head.x, y: r.y + r.head.y - r.head.r - 7 });
     }
@@ -594,34 +542,8 @@
   }
 
   function runnerFor(p) {
-    if (!p.runner) p.runner = D.createRunner(p.limbs ? decodeLimbs(p.limbs) : D.POSES.wheel, p.color, 1);
+    if (!p.runner) p.runner = D.createRunner(p.limbs ? D.decodeLimbs(p.limbs) : D.POSES.wheel, p.color, 1);
     return p.runner;
-  }
-
-  // ---------------- limbs on the wire: one stroke per joint as a flat [x0,y0,x1,y1,...] ----------------
-  function encodeLimbs(limbs) {
-    const out = {};
-    for (const k of ['arm', 'leg']) {
-      out[k] = (limbs[k] || []).map(s => {
-        const pts = D.resample(s, 6);
-        pts.push(s[s.length - 1]);
-        const flat = [];
-        for (const p of pts.slice(0, 120)) flat.push(Math.round(p.x), Math.round(p.y));
-        return flat;
-      });
-    }
-    return out;
-  }
-  function decodeLimbs(limbs) {
-    const out = { arm: [], leg: [] };
-    for (const k of ['arm', 'leg']) {
-      for (const flat of limbs[k] || []) {
-        const s = [];
-        for (let i = 0; i + 1 < flat.length; i += 2) s.push({ x: flat[i], y: flat[i + 1] });
-        if (s.length > 1) out[k].push(s);
-      }
-    }
-    return out;
   }
 
   // ---------------- lobby UI ----------------

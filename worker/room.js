@@ -1,32 +1,49 @@
 // Draw Roll Race — one Durable Object per room.
 //
-// Each browser simulates its own runner; the room relays positions and drawn limbs,
-// runs the race lifecycle (lobby -> racing -> lobby) and checks finish times.
-// CPU racers fill open slots: the room keeps their settings, the host's browser runs them.
-// Public rooms are listed in the Directory. Uses WebSocket hibernation, so a quiet room costs nothing.
+// Each browser simulates its own runner and sends its position; the room relays positions
+// and drawn limbs, runs the race (lobby -> countdown -> racing -> lobby) and checks finishes
+// against the course it builds itself. The room also runs the CPU racers, with the same
+// physics and CPU code the browser uses. Public rooms are listed in the Directory.
+// Between races the room uses WebSocket hibernation, so a quiet room costs nothing.
 import { DurableObject } from 'cloudflare:workers';
+import '../public/src/physics.js';
+import '../public/src/cpu.js';
+import { moderateName } from './moderation.js';
+
+const D = globalThis.DRR;
 
 export const MAX_RACERS = 8;        // people + CPUs
 const COUNTDOWN_MS = 3500;          // clients count down 3-2-1 from receipt
 const RACE_LIMIT_MS = 4 * 60 * 1000; // a race ends after this even if someone is stuck
 const CPU_GRACE_MS = 10 * 1000;     // once every person is done, CPUs get this long to finish
+const CPU_TICK_MS = 66;             // how often the room advances CPUs and sends their positions
+const REJOIN_MS = 60 * 1000;        // a dropped player can come back as themselves within this
 const MAX_MESSAGE = 8 * 1024;
 const STATE_RATE = 40;              // max position messages per second per sender
+const MAX_SPEED = 1200;             // world units per second no runner can average
 // Everyone sees themselves in red, so nobody else is ever red.
 const COLORS = ['#3a7bd5', '#2fa36b', '#c9892b', '#9a5bd6', '#e0508f', '#1f9fb0', '#7a8a2e', '#5b6472'];
 const CPU_NAMES = ['Bolt', 'Wobble', 'Spoke', 'Zippy', 'Noodle', 'Gizmo', 'Pogo', 'Rusty', 'Dash', 'Sprocket', 'Doodle', 'Tumble'];
 const DIFFICULTIES = ['easy', 'normal', 'hard'];
-const FIXED_STAGES = 3;
-const RANDOM_BASE = 1000;           // stage numbers from here up are generated courses (see physics.js)
+const FIXED_STAGES = D.STAGES.length;
+const TOKEN_RE = /^[A-Za-z0-9_-]{16,64}$/;
 
 const clean = (s, max) => String(s ?? '').replace(/[\u0000-\u001f\u007f-\u009f\u200b-\u200f\u202a-\u202e\u2060-\u206f]/g, '').trim().slice(0, max);
 
 export class RaceRoom extends DurableObject {
   constructor(ctx, env) {
     super(ctx, env);
-    this.rate = new Map(); // sender -> { windowStart, count }; fine to lose on hibernation
+    this.rate = new Map();      // sender -> { windowStart, count }
+    this.pos = new Map();       // player id -> { x, t } last position they reported this race
+    this.course = null;         // the course of the race in progress
+    this.drivers = new Map();   // CPU id -> CPU driver (cpu.js)
+    this.cpuLimbs = new Map();  // CPU id -> encoded limbs, for people joining mid-race
+    this.cpuT = 0;
+    this.timer = null;
     ctx.blockConcurrencyWhile(async () => {
       this.room = (await ctx.storage.get('room')) || freshRoom();
+      // CPUs live in memory; if the room restarted mid-race they are gone, so end that race.
+      if (this.room.phase === 'racing') { this.room.phase = 'lobby'; this.room.results = []; }
     });
   }
 
@@ -47,30 +64,53 @@ export class RaceRoom extends DurableObject {
     const pair = new WebSocketPair();
     const [client, server] = Object.values(pair);
     const room = this.room;
+    const now = Date.now();
 
-    const sockets = this.humans();
-    if (sockets.length >= MAX_RACERS) {
+    const token = TOKEN_RE.test(url.searchParams.get('token') || '') ? url.searchParams.get('token') : null;
+    let sockets = this.humans();
+
+    // Same browser tab reconnecting while its old connection hasn't closed yet: take it over.
+    let resumed = null;
+    if (token) {
+      const old = sockets.find(ws => this.info(ws).token === token);
+      if (old) {
+        resumed = this.info(old);
+        old.serializeAttachment({ replaced: true });
+        try { old.close(4001, 'replaced'); } catch { /* already closing */ }
+        sockets = sockets.filter(ws => ws !== old);
+      } else if (room.away[token] && room.away[token].until > now) {
+        resumed = room.away[token];
+      }
+      delete room.away[token];
+    }
+    for (const [t, a] of Object.entries(room.away)) if (a.until <= now) delete room.away[t];
+
+    if (!resumed && sockets.length >= MAX_RACERS) {
       this.ctx.acceptWebSocket(server);
       server.send(JSON.stringify({ type: 'error', code: 'full', message: 'This room is full (8 racers).' }));
       server.close(4000, 'full');
       return new Response(null, { status: 101, webSocket: client });
     }
 
-    const player = {
-      id: crypto.randomUUID().slice(0, 8),
-      name: clean(url.searchParams.get('name'), 16) || 'Runner ' + (room.joins + 1),
-      color: this.freeColor(),
-      joinedAt: Date.now(),
-    };
-    room.joins++;
+    const typed = clean(url.searchParams.get('name'), 16);
+    const player = resumed
+      ? { id: resumed.id, name: resumed.name, color: resumed.color, joinedAt: resumed.joinedAt, token }
+      : {
+          id: crypto.randomUUID().slice(0, 8),
+          name: moderateName(typed, 'Runner ' + (room.joins + 1)),
+          color: this.freeColor(),
+          joinedAt: now,
+          token,
+        };
+    if (!resumed) room.joins++;
     if (!sockets.length) {
       // First one in creates the room and its settings.
       room.code = clean(url.pathname.split('/')[3], 5).toUpperCase();
       room.isPublic = url.searchParams.get('public') === '1';
-      room.name = clean(url.searchParams.get('room_name'), 24) || player.name + "'s room";
+      room.name = moderateName(clean(url.searchParams.get('room_name'), 24), player.name + "'s room");
       room.hostId = player.id;
       room.cpus = [];
-    } else if (!sockets.some(ws => this.info(ws)?.id === room.hostId)) {
+    } else if (!sockets.some(ws => this.info(ws).id === room.hostId)) {
       room.hostId = player.id;
     }
     const trimmed = room.phase === 'lobby' && this.trimCpus(sockets.length + 1);
@@ -79,8 +119,13 @@ export class RaceRoom extends DurableObject {
     this.ctx.acceptWebSocket(server);
     server.serializeAttachment(player);
 
-    server.send(JSON.stringify({ type: 'welcome', you: player.id, room: this.publicRoom(), players: await this.playerList(), cpuLimbs: await this.cpuLimbs() }));
-    this.broadcast({ type: 'join', player: { ...player, limbs: null } }, server);
+    server.send(JSON.stringify({
+      type: 'welcome', you: player.id, resumed: !!resumed,
+      room: this.publicRoom(), players: await this.playerList(),
+      cpuLimbs: Object.fromEntries(this.cpuLimbs),
+    }));
+    const { token: _t, ...shown } = player;
+    this.broadcast({ type: 'join', player: { ...shown, limbs: null }, resumed: !!resumed }, server);
     if (trimmed) this.broadcast({ type: 'cpus', cpus: room.cpus }, server);
     await this.publish();
     return new Response(null, { status: 101, webSocket: client });
@@ -91,46 +136,30 @@ export class RaceRoom extends DurableObject {
     let msg;
     try { msg = JSON.parse(raw); } catch { return; }
     const me = this.info(ws);
-    if (!me || !msg || typeof msg.type !== 'string') return;
+    if (!me || !me.id || !msg || typeof msg.type !== 'string') return;
     const room = this.room;
     const isHost = me.id === room.hostId;
 
     switch (msg.type) {
       case 'state': {
-        // Hot path: relay only, never stored.
+        // Hot path: relay only. Remember the position so finishes can be checked.
         if (room.phase !== 'racing' || msg.r !== room.raceId || !this.allow(me.id)) return;
-        this.broadcast({ type: 'state', id: me.id, x: num(msg.x), y: num(msg.y), a: num(msg.a), b: num(msg.b) }, ws);
-        return;
-      }
-      case 'cpuStates': {
-        // The host runs the CPUs and sends all their positions in one message.
-        if (!isHost || room.phase !== 'racing' || msg.r !== room.raceId || !Array.isArray(msg.s) || !this.allow('cpus')) return;
-        const ids = new Set(room.cpus.map(c => c.id));
-        const s = msg.s.filter(e => Array.isArray(e) && ids.has(e[0])).slice(0, MAX_RACERS)
-          .map(e => [e[0], num(e[1]), num(e[2]), num(e[3]), num(e[4])]);
-        this.broadcast({ type: 'cpuStates', s }, ws);
+        const x = num(msg.x), y = num(msg.y);
+        this.trackPosition(me.id, x);
+        this.broadcast({ type: 'state', id: me.id, x, y, a: num(msg.a), b: num(msg.b) }, ws);
         return;
       }
       case 'limbs': {
         const limbs = cleanLimbs(msg.limbs);
         if (!limbs) return;
+        const lost = Array.isArray(msg.lost) ? msg.lost.filter(k => k === 'arm' || k === 'leg') : undefined;
         await this.ctx.storage.put('limbs:' + me.id, limbs);
-        this.broadcast({ type: 'limbs', id: me.id, limbs }, ws);
-        return;
-      }
-      case 'cpuLimbs': {
-        const cpu = room.cpus.find(c => c.id === msg.id);
-        const limbs = cleanLimbs(msg.limbs);
-        if (!isHost || !cpu || !limbs) return;
-        cpu.pose = clean(msg.pose, 12);
-        await this.ctx.storage.put('limbs:' + cpu.id, limbs);
-        await this.save();
-        this.broadcast({ type: 'limbs', id: cpu.id, limbs, pose: cpu.pose }, ws);
+        this.broadcast({ type: 'limbs', id: me.id, limbs, lost }, ws);
         return;
       }
       case 'name': {
-        const name = clean(msg.name, 16);
-        if (!name) return;
+        const name = moderateName(clean(msg.name, 16), null);
+        if (!name) { ws.send(JSON.stringify({ type: 'notice', message: 'That name isn’t allowed. Try another one.' })); return; }
         me.name = name;
         ws.serializeAttachment(me);
         this.broadcast({ type: 'name', id: me.id, name });
@@ -140,7 +169,7 @@ export class RaceRoom extends DurableObject {
       case 'settings': {
         if (!isHost) return;
         if (typeof msg.isPublic === 'boolean') room.isPublic = msg.isPublic;
-        const name = clean(msg.name, 24);
+        const name = moderateName(clean(msg.name, 24), null);
         if (name) room.name = name;
         await this.save();
         this.broadcast({ type: 'settings', isPublic: room.isPublic, name: room.name });
@@ -160,7 +189,6 @@ export class RaceRoom extends DurableObject {
           color: this.freeColor(),
           difficulty: DIFFICULTIES.includes(msg.difficulty) ? msg.difficulty : 'normal',
           seed: b,
-          pose: 'wheel',
         });
         await this.save();
         this.broadcast({ type: 'cpus', cpus: room.cpus });
@@ -172,7 +200,6 @@ export class RaceRoom extends DurableObject {
         const before = room.cpus.length;
         room.cpus = room.cpus.filter(c => c.id !== msg.id);
         if (room.cpus.length === before) return;
-        await this.ctx.storage.delete('limbs:' + msg.id);
         await this.save();
         this.broadcast({ type: 'cpus', cpus: room.cpus });
         await this.publish();
@@ -180,35 +207,31 @@ export class RaceRoom extends DurableObject {
       }
       case 'start': {
         if (!isHost || room.phase !== 'lobby') return;
-        let stage = Number.isInteger(msg.stage) ? msg.stage : 0;
-        if (stage < 0) stage = RANDOM_BASE + (crypto.getRandomValues(new Uint32Array(1))[0] % 1000000);
-        if (stage >= FIXED_STAGES && stage < RANDOM_BASE) stage = 0;
+        room.stage = this.pickStage(msg.stage);
         const humans = this.humans();
         this.trimCpus(humans.length);
-        for (const c of room.cpus) { c.pose = 'wheel'; await this.ctx.storage.delete('limbs:' + c.id); }
         room.phase = 'racing';
         room.raceId++;
-        room.stage = stage;
         room.startsAt = Date.now() + COUNTDOWN_MS;
         room.results = [];
         room.graceUntil = 0;
         room.participants = humans.map(s => this.info(s).id).concat(room.cpus.map(c => c.id));
         await this.save();
         await this.ctx.storage.setAlarm(room.startsAt + RACE_LIMIT_MS);
-        this.broadcast({ type: 'countdown', raceId: room.raceId, stage, ms: COUNTDOWN_MS, participants: room.participants, cpus: room.cpus });
+        this.pos.clear();
+        this.startCpus();
+        this.broadcast({ type: 'countdown', raceId: room.raceId, stage: room.stage, ms: COUNTDOWN_MS, participants: room.participants, cpus: room.cpus });
         await this.publish();
         return;
       }
       case 'finish':
       case 'giveup': {
         if (room.phase !== 'racing' || msg.r !== room.raceId) return;
+        if (msg.type === 'finish' && !this.finishLooksReal(me.id, msg.time)) {
+          ws.send(JSON.stringify({ type: 'notice', message: 'The room couldn’t confirm that finish, so it wasn’t counted.' }));
+          return;
+        }
         await this.record(me, msg.type === 'finish' ? msg.time : null);
-        return;
-      }
-      case 'cpuFinish': {
-        const cpu = room.cpus.find(c => c.id === msg.id);
-        if (!isHost || !cpu || room.phase !== 'racing' || msg.r !== room.raceId) return;
-        await this.record(cpu, msg.time);
         return;
       }
     }
@@ -219,22 +242,26 @@ export class RaceRoom extends DurableObject {
 
   async leave(ws) {
     const me = this.info(ws);
-    if (!me) return;
+    if (!me || !me.id) return; // replaced by a reconnect of the same tab
+    ws.serializeAttachment({ left: true });
     try { ws.close(1000, 'bye'); } catch { /* already closed */ }
     this.rate.delete(me.id);
-    await this.ctx.storage.delete('limbs:' + me.id);
     const rest = this.humans().filter(s => s !== ws);
     if (!rest.length) {
       // Empty room: forget everything and leave the directory.
       const code = this.room.code;
+      this.stopCpus();
       await this.ctx.storage.deleteAll();
       await this.ctx.storage.deleteAlarm();
       this.room = freshRoom();
+      this.cpuLimbs.clear();
       if (code) {
         try { await this.directory().remove(code); } catch (e) { console.error('directory remove failed', e); }
       }
       return;
     }
+    // Keep their place for a while in case they come back (a dropped connection, a reload).
+    if (me.token) this.room.away[me.token] = { id: me.id, name: me.name, color: me.color, joinedAt: me.joinedAt, until: Date.now() + REJOIN_MS };
     if (this.room.hostId === me.id) {
       this.room.hostId = rest.map(s => this.info(s)).sort((a, b) => a.joinedAt - b.joinedAt)[0].id;
     }
@@ -251,7 +278,91 @@ export class RaceRoom extends DurableObject {
     if (now >= room.startsAt + RACE_LIMIT_MS - 1000 || (room.graceUntil && now >= room.graceUntil - 50)) await this.endRace();
   }
 
+  // ---------------- CPUs ----------------
+  startCpus() {
+    this.stopCpus();
+    this.course = D.buildCourse(this.room.stage);
+    this.cpuLimbs.clear();
+    for (const c of this.room.cpus) {
+      const drv = D.createCpu(this.course, {
+        seed: c.seed, difficulty: c.difficulty, color: c.color,
+        onSwap: (limbs, pose, lost) => {
+          const enc = D.encodeLimbs(limbs);
+          this.cpuLimbs.set(c.id, enc);
+          this.broadcast({ type: 'limbs', id: c.id, limbs: enc, pose, lost });
+        },
+      });
+      this.cpuLimbs.set(c.id, D.encodeLimbs(drv.limbs));
+      this.drivers.set(c.id, drv);
+    }
+    this.cpuT = 0;
+    if (this.drivers.size) this.timer = setInterval(() => { this.tickCpus().catch(e => console.error('cpu tick failed', e)); }, CPU_TICK_MS);
+  }
+
+  stopCpus() {
+    if (this.timer) clearInterval(this.timer);
+    this.timer = null;
+    this.drivers.clear();
+  }
+
+  async tickCpus() {
+    const room = this.room;
+    if (room.phase !== 'racing' || !this.drivers.size) { this.stopCpus(); return; }
+    const now = (Date.now() - room.startsAt) / 1000;
+    if (now <= 0) return;
+    const target = Math.min(now, this.cpuT + 1); // catch up at most 1 s per tick
+    const finished = [];
+    while (this.cpuT < target) {
+      this.cpuT += D.CFG.DT;
+      for (const [id, drv] of this.drivers) {
+        if (drv.finishTime !== null) continue;
+        drv.step(D.CFG.DT, this.cpuT);
+        if (drv.finishTime !== null) finished.push(id);
+      }
+    }
+    const s = [];
+    for (const [id, drv] of this.drivers) {
+      const rn = drv.runner;
+      s.push([id, num(rn.x), num(rn.y), num(rn.joints[0] ? rn.joints[0].angle : 0), num(rn.joints[1] ? rn.joints[1].angle : 0)]);
+    }
+    this.broadcast({ type: 'cpuStates', s });
+    for (const id of finished) {
+      const cpu = room.cpus.find(c => c.id === id);
+      if (cpu) await this.record(cpu, this.drivers.get(id)?.finishTime ?? this.cpuT);
+    }
+    if ([...this.drivers.values()].every(d => d.finishTime !== null)) this.stopCpus();
+  }
+
   // ---------------- race lifecycle ----------------
+  pickStage(asked) {
+    let stage = Number.isInteger(asked) ? asked : 0;
+    if (stage < 0) return D.RANDOM_BASE + (crypto.getRandomValues(new Uint32Array(1))[0] % 1000000);
+    if (D.TEST_STAGES[stage]) return this.env.ALLOW_TEST_STAGES === '1' ? stage : 0;
+    if (stage >= FIXED_STAGES && stage < D.RANDOM_BASE) return 0;
+    return stage;
+  }
+
+  trackPosition(id, x) {
+    const t = Date.now();
+    const last = this.pos.get(id);
+    // A jump faster than any runner can move is ignored, so it can't count toward a finish.
+    if (last && x - last.x > MAX_SPEED * (t - last.t) / 1000 + 150) return;
+    this.pos.set(id, { x, t });
+  }
+
+  // A finish counts only if the player's reported positions reached the line and the time is possible.
+  finishLooksReal(id, claimed) {
+    const room = this.room;
+    const course = this.course || D.buildCourse(room.stage);
+    const elapsed = (Date.now() - room.startsAt) / 1000;
+    const minTime = (course.finishX - course.startX) / MAX_SPEED;
+    if (elapsed < minTime) return false;
+    const time = Number(claimed);
+    if (Number.isFinite(time) && time < minTime) return false;
+    const last = this.pos.get(id);
+    return !!last && last.x >= course.finishX - 200;
+  }
+
   async record(racer, claimed) {
     const room = this.room;
     if (!room.participants.includes(racer.id) || room.results.some(r => r.id === racer.id)) return;
@@ -281,8 +392,7 @@ export class RaceRoom extends DurableObject {
     const people = room.participants.filter(id => here.has(id) && !done(id));
     if (people.length) return;
     const cpus = room.participants.filter(id => id.startsWith('cpu-') && !done(id));
-    // With nobody left to run them, CPUs cannot finish.
-    if (!cpus.length || !here.size) { await this.endRace(); return; }
+    if (!cpus.length || !here.size || !this.drivers.size) { await this.endRace(); return; }
     if (!room.graceUntil) {
       room.graceUntil = Date.now() + CPU_GRACE_MS;
       await this.save();
@@ -292,9 +402,10 @@ export class RaceRoom extends DurableObject {
 
   async endRace() {
     const room = this.room;
+    this.stopCpus();
     room.phase = 'lobby';
     room.graceUntil = 0;
-    // Anyone who neither finished nor gave up: CPUs still running, people who left.
+    // CPUs that never finished are listed as such.
     for (const id of room.participants) {
       if (room.results.some(r => r.id === id)) continue;
       const cpu = room.cpus.find(c => c.id === id);
@@ -306,7 +417,24 @@ export class RaceRoom extends DurableObject {
     await this.save();
     await this.ctx.storage.deleteAlarm();
     this.broadcast({ type: 'raceEnd', raceId: room.raceId, results: room.lastResults, hostId: room.hostId, cpus: room.cpus });
+    this.stats(room);
     await this.publish();
+  }
+
+  // Race numbers for Workers Analytics Engine (only when the binding exists).
+  stats(room) {
+    if (!this.env.STATS) return;
+    const res = room.lastResults || [];
+    const people = res.filter(r => !r.cpu);
+    const finished = people.filter(r => r.time !== null);
+    try {
+      this.env.STATS.writeDataPoint({
+        blobs: ['race', String(room.stage >= D.RANDOM_BASE ? 'random' : room.stage)],
+        doubles: [people.length, res.length - people.length, finished.length,
+          finished.length ? finished.reduce((a, r) => a + r.time, 0) / finished.length : 0],
+        indexes: ['race'],
+      });
+    } catch (e) { console.error('stats failed', e); }
   }
 
   // ---------------- directory ----------------
@@ -336,11 +464,12 @@ export class RaceRoom extends DurableObject {
 
   // ---------------- helpers ----------------
   info(ws) {
-    try { return ws.deserializeAttachment(); } catch { return null; }
+    try { return ws.deserializeAttachment() || {}; } catch { return {}; }
   }
 
+  // Open connections that belong to a player (not replaced, not already leaving).
   humans() {
-    return this.ctx.getWebSockets().filter(ws => this.info(ws));
+    return this.ctx.getWebSockets().filter(ws => this.info(ws).id);
   }
 
   // Drop CPUs (newest first) until people + CPUs fit. Returns true if any were dropped.
@@ -353,7 +482,7 @@ export class RaceRoom extends DurableObject {
   }
 
   freeColor() {
-    const used = new Set(this.humans().map(ws => this.info(ws)?.color).concat(this.room.cpus.map(c => c.color)));
+    const used = new Set(this.humans().map(ws => this.info(ws).color).concat(this.room.cpus.map(c => c.color)));
     return COLORS.find(c => !used.has(c)) || COLORS[this.room.joins % COLORS.length];
   }
 
@@ -370,18 +499,8 @@ export class RaceRoom extends DurableObject {
   async playerList() {
     const out = [];
     for (const ws of this.humans()) {
-      const p = this.info(ws);
+      const { token, ...p } = this.info(ws);
       out.push({ ...p, limbs: (await this.ctx.storage.get('limbs:' + p.id)) || null });
-    }
-    return out;
-  }
-
-  // Limbs the CPUs are currently using (for someone joining mid-race).
-  async cpuLimbs() {
-    const out = {};
-    for (const c of this.room.cpus) {
-      const limbs = await this.ctx.storage.get('limbs:' + c.id);
-      if (limbs) out[c.id] = limbs;
     }
     return out;
   }
@@ -395,7 +514,7 @@ export class RaceRoom extends DurableObject {
 
   broadcast(msg, except) {
     const text = JSON.stringify(msg);
-    for (const ws of this.ctx.getWebSockets()) {
+    for (const ws of this.humans()) {
       if (ws === except) continue;
       try { ws.send(text); } catch { /* closing */ }
     }
@@ -408,7 +527,7 @@ function freshRoom() {
   return {
     code: null, name: '', isPublic: false,
     phase: 'lobby', stage: 0, raceId: 0, startsAt: 0, hostId: null, joins: 0,
-    participants: [], results: [], lastResults: [], cpus: [], cpuSerial: 0,
+    participants: [], results: [], lastResults: [], cpus: [], cpuSerial: 0, away: {},
   };
 }
 

@@ -19,6 +19,13 @@ const json = (data, status = 200) =>
 
 const room = (env, code) => env.ROOMS.get(env.ROOMS.idFromName(code));
 
+// Workers Rate Limiting binding, keyed by the caller's IP. Without the binding, everything is allowed.
+async function allowed(limiter, request) {
+  if (!limiter) return true;
+  const key = request.headers.get('CF-Connecting-IP') || 'local';
+  try { return (await limiter.limit({ key })).success; } catch { return true; }
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
@@ -27,8 +34,17 @@ export default {
     if (parts[1] === 'health') return json({ ok: true });
 
     if (parts[1] === 'rooms' && parts.length === 2) {
-      // POST: a fresh code for a new room. GET: public rooms.
-      if (request.method === 'POST') return json({ code: newCode() });
+      // POST: a fresh, unused code for a new room. GET: public rooms.
+      if (request.method === 'POST') {
+        if (!(await allowed(env.CREATE_LIMITER, request))) {
+          return json({ error: 'Too many new rooms from your network. Wait a minute and try again.' }, 429);
+        }
+        for (let tries = 0; tries < 5; tries++) {
+          const code = newCode();
+          if (!(await room(env, code).summary()).exists) return json({ code });
+        }
+        return json({ error: 'Could not find a free room code. Try again.' }, 503);
+      }
       const dir = env.DIRECTORY.get(env.DIRECTORY.idFromName('public-rooms'));
       return json({ rooms: await dir.list() });
     }

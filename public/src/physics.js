@@ -540,6 +540,33 @@
     climber: { arm: [[FIG.shoulder, { x: FIG.shoulder.x + 100, y: FIG.shoulder.y }]], leg: [halfRing(FIG.hip, 24)] },
   };
 
+  // Limbs on the wire: one stroke per joint, as a flat [x0,y0,x1,y1,...] array of pad coordinates.
+  function encodeLimbs(limbs) {
+    const out = {};
+    for (const k of ['arm', 'leg']) {
+      out[k] = (limbs[k] || []).map(s => {
+        const pts = resample(s, 6);
+        pts.push(s[s.length - 1]);
+        const flat = [];
+        for (const p of pts.slice(0, 120)) flat.push(Math.round(p.x), Math.round(p.y));
+        return flat;
+      });
+    }
+    return out;
+  }
+  function decodeLimbs(limbs) {
+    const out = { arm: [], leg: [] };
+    if (!limbs) return out;
+    for (const k of ['arm', 'leg']) {
+      for (const flat of limbs[k] || []) {
+        const s = [];
+        for (let i = 0; i + 1 < flat.length; i += 2) s.push({ x: flat[i], y: flat[i + 1] });
+        if (s.length > 1) out[k].push(s);
+      }
+    }
+    return out;
+  }
+
   // Remove the limbs a runner hit spikes with. Returns the new limbs and runner, or null if nothing broke.
   function shatter(course, b, limbs) {
     if (!b.hit.arm && !b.hit.leg) return null;
@@ -562,6 +589,6 @@
     CFG, FIG, PAD_W, PAD_H, SECTIONS, STAGES, POSES, RANDOM_BASE, TEST_STAGES,
     rng, hashSeed, halfRing,
     buildCourse, stageSections, stageLevel, groundAt, ceilAt, fluidAt, surfAt, zoneAt,
-    createRunner, swapLimbs, settle, step, eachPoint, planIndex, resample, shatter,
+    createRunner, swapLimbs, settle, step, eachPoint, planIndex, resample, shatter, encodeLimbs, decodeLimbs,
   };
 })(typeof window !== 'undefined' ? window : globalThis);
