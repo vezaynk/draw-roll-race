@@ -5,6 +5,7 @@ import {
   CODE_RE, EMOTES, RANDOM_COURSE, SAME_COURSE,
 } from '../../shared/protocol';
 import type { RoomInfo, ServerMessage } from '../../shared/protocol';
+import { enableAccount } from '../account';
 import { enterDaily } from '../controls';
 import { byId, ordinal } from '../dom';
 import {
@@ -534,6 +535,8 @@ export default async function initOnline(): Promise<void> {
     return;
   }
   byId('start-online').hidden = false;
+  // Passkeys and the session live on the same server.
+  enableAccount();
   const code = (params.get('room') ?? '').toUpperCase();
   if (CODE_RE.test(code)) join(code);
 }

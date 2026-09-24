@@ -59,6 +59,21 @@
       <h2>Options</h2>
       <button id="options-close" type="button" class="quiet">Done</button>
     </div>
+    <section id="account" class="menu-block" aria-labelledby="account-title" hidden>
+      <h3 id="account-title">Your player</h3>
+      <div class="field-row">
+        <label for="account-name">Name</label>
+        <input id="account-name" type="text" maxlength="16" autocomplete="nickname" spellcheck="false" placeholder="Runner">
+      </div>
+      <p id="account-status" class="menu-note"></p>
+      <div class="btn-row">
+        <button id="passkey-save" type="button" class="primary">Save with a passkey</button>
+        <button id="passkey-signin" type="button">Sign in with a passkey</button>
+        <button id="passkey-add" type="button" hidden>Add another passkey</button>
+        <button id="logout-btn" type="button" class="quiet" hidden>Log out</button>
+      </div>
+      <p id="account-note" class="menu-note" role="status"></p>
+    </section>
     <section class="menu-block" aria-labelledby="cpu-title">
       <h3 id="cpu-title">Solo opponents</h3>
       <div class="field-row">

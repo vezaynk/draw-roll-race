@@ -2,6 +2,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import buildCourse from '../../src/shared/course/build';
+import { playerHash } from '../../src/shared/identity';
 import { RunReplay } from '../../src/shared/replay';
 import botRun from '../support/bot';
 import {
@@ -90,8 +91,8 @@ test('daily runs are timed by the server replaying them', async () => {
   const out = await ok.json() as { time: number };
   assert.equal(ok.status, 200, JSON.stringify(out));
   assert.equal(out.time, expected);
-  const board = await (await fetch(`${BASE}api/daily?player=${player}`)).json() as {
-    top: { name: string; you: boolean }[];
+  const board = await (await fetch(`${BASE}api/daily?hash=${await playerHash(player)}`)).json() as {
+    top: { name: string; hash: string }[];
     you: { rank: number; time: number } | null;
   };
   assert.equal(board.you?.time, expected);

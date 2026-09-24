@@ -1,5 +1,6 @@
 // The Worker: static files come from ./public (see wrangler.jsonc); this handles /api/*.
 import { CODE_ALPHABET, CODE_RE } from '../shared/protocol';
+import handleAuth from './auth';
 import handleDaily from './daily';
 import { Directory } from './directory';
 import type { Env } from './env';
@@ -55,10 +56,22 @@ async function daily(request: Request, env: Env): Promise<Response> {
   return handleDaily(request, env);
 }
 
+/**
+ * Writes must come from the game's own pages. Browsers send Origin on cross-site requests, so a
+ * page elsewhere can't post runs or sign people in with the session cookie.
+ */
+function foreignOrigin(request: Request): boolean {
+  if (request.method === 'GET' || request.method === 'HEAD') return false;
+  const origin = request.headers.get('origin');
+  return !!origin && origin !== new URL(request.url).origin;
+}
+
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const parts = new URL(request.url).pathname.split('/').filter(Boolean); // ['api', ...]
     const [, what] = parts;
+    if (foreignOrigin(request)) return json({ error: 'Forbidden' }, 403);
+    if (what === 'auth') return handleAuth(request, env, parts.slice(2).join('/'));
     if (what === 'health') return json({ ok: true, daily: !!env.DB });
     if (what === 'daily' && parts.length === 2) return daily(request, env);
     if (what === 'daily' && parts[2] === 'leader' && parts.length === 3) return handleDaily(request, env);

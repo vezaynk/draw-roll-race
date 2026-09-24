@@ -1,6 +1,7 @@
 // Boots the game.
 import buildCourse from '../shared/course/build';
 import { RunReplay } from '../shared/replay';
+import initAccount from './account';
 import initControls, { enterDaily } from './controls';
 import { buildProgress, updateHud } from './hud';
 import initOnline from './online';
@@ -30,6 +31,7 @@ function boot(): void {
   initPad(onLimbsDrawn);
   initControls();
   initOptions();
+  initAccount();
   initSound();
   resetStage();
   buildProgress();

@@ -6,11 +6,12 @@ import type { RunInput } from '../shared/replay';
 import { replayGhost } from './ghost';
 import type { Ghost, Recording } from './ghost';
 import { byId, el, ordinal } from './dom';
-import { playerName, save } from './storage';
+import { myHash, playerName, save } from './storage';
 
 interface Leaderboard {
   day: string;
-  top: { name: string; time: number; you: boolean; verifySeconds: number | null }[];
+  /** Players appear as hashes of their IDs; ours is the one matching myHash(). */
+  top: { name: string; time: number; hash: string; verifySeconds: number | null }[];
   you: { time: number; rank: number } | null;
   total: number;
 }
@@ -18,7 +19,7 @@ interface Leaderboard {
 interface Leader {
   name: string;
   time: number;
-  you: boolean;
+  hash: string;
   inputs: RunInput[];
 }
 
@@ -31,7 +32,7 @@ let leader: { day: string; ghost: Ghost | null } | null = null;
  */
 export async function loadLeader(day: string): Promise<string | null> {
   try {
-    const res = await fetch(`/api/daily/leader?day=${day}&player=${encodeURIComponent(save.player)}`, { cache: 'no-store' });
+    const res = await fetch(`/api/daily/leader?day=${day}`, { cache: 'no-store' });
     if (!res.ok) return null;
     const data = await res.json() as { leader: Leader | null };
     const top = data.leader;
@@ -39,9 +40,10 @@ export async function loadLeader(day: string): Promise<string | null> {
       leader = { day, ghost: null };
       return null;
     }
-    const ghost = top.you ? null : replayGhost(buildCourse(dailyStage(day)), top.inputs, `Leader: ${top.name}`);
+    const you = top.hash === await myHash();
+    const ghost = you ? null : replayGhost(buildCourse(dailyStage(day)), top.inputs, `Leader: ${top.name}`);
     leader = { day, ghost };
-    return top.you
+    return you
       ? `You lead today (${top.time.toFixed(2)} s).`
       : `Race today’s leader, ${top.name} (${top.time.toFixed(2)} s).`;
   } catch {
@@ -73,14 +75,15 @@ function verifiedMark(seconds: number | null): HTMLElement {
   return mark;
 }
 
-function renderBoard(data: Leaderboard): void {
+function renderBoard(data: Leaderboard, mine: string): void {
   const list = byId('lb-list');
   list.textContent = '';
   data.top.forEach((r, i) => {
-    const item = el('li', r.you ? 'you' : '');
+    const you = r.hash === mine;
+    const item = el('li', you ? 'you' : '');
     item.append(
       el('span', 'rk', ordinal(i + 1)),
-      el('span', 'nm', r.you ? `${r.name} (you)` : r.name),
+      el('span', 'nm', you ? `${r.name} (you)` : r.name),
       verifiedMark(r.verifySeconds),
       el('span', '', `${r.time.toFixed(2)} s`),
     );
@@ -89,13 +92,14 @@ function renderBoard(data: Leaderboard): void {
 }
 
 async function showLeaderboard(day: string, sent: boolean): Promise<void> {
-  const res = await fetch(`/api/daily?day=${day}&player=${encodeURIComponent(save.player)}`, { cache: 'no-store' });
+  const mine = await myHash();
+  const res = await fetch(`/api/daily?day=${day}&hash=${mine}`, { cache: 'no-store' });
   if (!res.ok) {
     if (sent) note('Could not load the leaderboard.');
     return;
   }
   const data = await res.json() as Leaderboard;
-  renderBoard(data);
+  renderBoard(data, mine);
   if (!sent) return;
   note(data.you
     ? `You are ${ordinal(data.you.rank)} of ${data.total} today (best ${data.you.time.toFixed(2)} s).`
