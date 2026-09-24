@@ -17,7 +17,9 @@ import { drawBubble, labelSpot } from '../render/draw';
 import { render } from '../render/scene';
 import { spawnShards } from '../render/shards';
 import { hooks, state } from '../state';
-import { playerName, setPlayerName } from '../storage';
+import {
+  displayName, myHash, playerName, setPlayerName,
+} from '../storage';
 import RoomConnection from './connection';
 import type { RoomSetup } from './connection';
 import {
@@ -364,7 +366,7 @@ function syncStageSelect(): void {
 function join(code: string, setup?: RoomSetup): void {
   closeMenu();
   net.conn?.close();
-  net.conn = new RoomConnection(code, () => nameInput().value.trim() || playerName(), {
+  net.conn = new RoomConnection(code, () => nameInput().value.trim() || displayName(), {
     message: handle,
     lost: (retrying) => setStatus(retrying ? 'Reconnecting…' : 'Lost connection to the room. Reload the page to try again.', true),
   });
@@ -381,7 +383,11 @@ function join(code: string, setup?: RoomSetup): void {
   resetStage();
   setStatus('Connecting…');
   showLobby(true);
-  net.conn.open(setup);
+  // Your default name comes from your player hash, worked out on a first visit: wait for it.
+  const conn = net.conn;
+  myHash().catch(() => '').then(() => {
+    if (net.conn === conn) conn.open(setup);
+  });
 }
 
 function leave(): void {
@@ -482,8 +488,9 @@ function bindLobbyButtons(): void {
   byId('leave-btn').addEventListener('click', leave);
   byId('copy-link').addEventListener('click', copyInviteLink);
   nameInput().value = playerName();
+  nameInput().placeholder = displayName();
   nameInput().addEventListener('change', () => {
-    const name = nameInput().value.trim().slice(0, 16);
+    const name = nameInput().value.trim().slice(0, 24);
     if (!name) return;
     setPlayerName(name);
     send({ type: 'name', name });

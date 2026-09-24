@@ -3,7 +3,7 @@
 import buildCourse from '../shared/course/build';
 import type CpuRacer from '../shared/cpu/racer';
 import { emptyLimbs } from '../shared/limbs';
-import { randomLook } from '../shared/look';
+import { DEFAULT_LOOK, lookFromHash } from '../shared/look';
 import type { Look } from '../shared/look';
 import type {
   Course, CourseSection, LimbKind, Limbs, Point, Runner, SectionType,
@@ -45,7 +45,8 @@ export const state: GameState = {
   course: buildCourse(save.stage),
   limbs: emptyLimbs(),
   player: null,
-  look: save.signedIn ? save.look : randomLook(),
+  // Until the hash is worked out on a first visit, a plain look (main.ts then puts on yours).
+  look: save.look ?? (save.playerHash ? lookFromHash(save.playerHash) : DEFAULT_LOOK),
   cpu: null,
   cpuTime: null,
   ghosts: [],
@@ -69,7 +70,7 @@ export interface Hooks {
   onFinish?: (time: number) => void;
   /** The Exit button while online. */
   onExit?: () => void;
-  /** The player changed their look (Options). */
+  /** The look you wear changed. */
   onLook?: () => void;
   /** "Return to lobby" on the results card after an online race. */
   onReturnToLobby?: () => void;

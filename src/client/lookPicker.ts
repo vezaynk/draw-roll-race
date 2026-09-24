@@ -1,6 +1,7 @@
 // The Customize window (the 🎨 button on the start screen): a preview of your runner's head and
 // a picker for each part (hair, hat, eyes, glasses). Choosing needs a player saved with a
-// passkey; until then the window shows your random look of the round and offers to save.
+// passkey; until then the window shows your default look (picked by your player hash) and
+// offers to save.
 import { LOOK_NAMES, LOOK_OPTIONS, randomLook } from '../shared/look';
 import type { Look, LookPart } from '../shared/look';
 import { onAccountChange, saveWithPasskey } from './account';

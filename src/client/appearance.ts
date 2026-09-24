@@ -1,7 +1,7 @@
-// Which look your runner wears. Customising it needs a player saved with a passkey: then it is
-// the look you chose, kept on the server with your player (so it follows your passkey). Until
-// then, you get a new random look every round.
-import { randomLook, sanitizeLook } from '../shared/look';
+// Which look your runner wears: the one you chose, or until you choose one, your default look
+// picked by your player hash (the same on every device). Choosing needs a player saved with a
+// passkey; the chosen look is kept on the server with your player, so it follows your passkey.
+import { lookFromHash, sanitizeLook } from '../shared/look';
 import type { Look } from '../shared/look';
 import { renderPad } from './pad';
 import { hooks, state } from './state';
@@ -20,9 +20,14 @@ function wear(look: Look): void {
   hooks.onLook?.();
 }
 
-/** The look for a new round: yours if you're saved, otherwise a fresh random one. */
-export function lookForRound(): void {
-  wear(save.signedIn ? save.look : randomLook());
+/** Your look: the one you chose, or else your default one. */
+export function myLook(): Look {
+  return save.look ?? lookFromHash(save.playerHash);
+}
+
+/** Puts on your look (at start, once your hash is known, and after changing player). */
+export function wearMyLook(): void {
+  wear(myLook());
 }
 
 function sendLook(): void {
@@ -56,17 +61,15 @@ export function chooseLook(look: Look): void {
 }
 
 /**
- * After signing in or saving with a passkey: use the look the server has for the player, or,
- * if it has none yet, keep the look worn now as the player's own.
+ * After signing in or saving with a passkey: use the look the server has for the player. If it
+ * has none, a look chosen here is sent to it; with none chosen either, the default look stays.
  */
 export function lookAfterSignIn(stored: unknown): void {
   if (stored) {
     save.look = sanitizeLook(stored);
     persist();
-    wear(save.look);
-  } else {
-    save.look = state.look;
-    persist();
+  } else if (save.look) {
     sendLook();
   }
+  wearMyLook();
 }

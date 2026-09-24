@@ -11,7 +11,8 @@
 // course with the same physics the game uses (shared/replay.ts) and records the time the replay
 // takes, not the time claimed.
 import { dailyStage } from '../shared/course/stages';
-import { HASH_RE, playerHash } from '../shared/identity';
+import { HASH_RE } from '../shared/identity';
+import { nameFromHash } from '../shared/names';
 import { cleanInputs } from '../shared/replay';
 import type { Env } from './env';
 import ensureSchema from './db';
@@ -125,8 +126,9 @@ async function submit(env: Env, db: D1Database, request: Request): Promise<Respo
     return json({ error: 'The server replayed your run and it did not reach the finish.', verifySeconds: seconds }, 422);
   }
   const time = Math.round(verdict.time * 100) / 100;
-  const name = moderateName(cleanText(body.name, 16), 'Runner');
-  await upsertPlayer(db, player, name);
+  // Players who haven't chosen a name are listed under their default one.
+  const row = await upsertPlayer(db, player, moderateName(cleanText(body.name, 24), ''));
+  const name = row.name || nameFromHash(row.hash);
   // Keep each player's best time for the day, with the run that set it.
   await db.prepare(`INSERT INTO daily_scores (day, player, name, time, created_at, run, verify_ms, hash)
     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
@@ -137,7 +139,7 @@ async function submit(env: Env, db: D1Database, request: Request): Promise<Respo
       verify_ms = CASE WHEN excluded.time <= daily_scores.time
         THEN excluded.verify_ms ELSE daily_scores.verify_ms END,
       time = MIN(daily_scores.time, excluded.time)`)
-    .bind(day, player, name, time, Date.now(), JSON.stringify(inputs), verdict.ms, await playerHash(player)).run();
+    .bind(day, player, name, time, Date.now(), JSON.stringify(inputs), verdict.ms, row.hash).run();
   env.STATS?.writeDataPoint({ blobs: ['daily', day], doubles: [time], indexes: ['daily'] });
   return json({
     ok: true, time, claimed: Number(body.time) || null, verifySeconds: seconds,

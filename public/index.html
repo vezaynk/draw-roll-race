@@ -66,7 +66,7 @@
       <h3 id="account-title">Your player</h3>
       <div class="field-row">
         <label for="account-name">Name</label>
-        <input id="account-name" type="text" maxlength="16" autocomplete="nickname" spellcheck="false" placeholder="Runner">
+        <input id="account-name" type="text" maxlength="24" autocomplete="nickname" spellcheck="false" placeholder="Runner">
       </div>
       <p id="account-status" class="menu-note"></p>
       <div class="btn-row">
@@ -105,7 +105,7 @@
       <button id="look-shuffle" type="button" class="quiet">Shuffle</button>
     </div>
     <section id="look-locked" class="menu-block" hidden>
-      <p class="menu-note">Save your player with a passkey to choose your look. Until then, you get a new random look every round.</p>
+      <p class="menu-note">Save your player with a passkey to choose your look. Until then, this is your look: it comes with your player.</p>
       <div class="btn-row">
         <button id="look-save" type="button" class="primary">Save with a passkey</button>
       </div>
@@ -167,7 +167,7 @@
     <p id="lobby-status" role="status"></p>
     <div class="name-row">
       <label for="my-name">Your name</label>
-      <input id="my-name" type="text" maxlength="16" autocomplete="nickname" spellcheck="false">
+      <input id="my-name" type="text" maxlength="24" autocomplete="nickname" spellcheck="false">
     </div>
     <ul id="player-list" aria-label="Racers"></ul>
     <button id="follow-btn" type="button" hidden></button>

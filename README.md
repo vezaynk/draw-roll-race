@@ -67,9 +67,19 @@ on your runner, your ghost and the drawing pad, and other players see it in
 rooms. It is purely cosmetic.
 
 Choosing a look needs a player saved with a passkey (the modal offers **Save
-with a passkey**). Until then your runner gets a new random look every round.
-A saved look is kept on the server with your player, so it follows your passkey
-to other devices.
+with a passkey**). A chosen look is kept on the server with your player, so it
+follows your passkey to other devices.
+
+## Default name and look
+
+Every player starts with a name and a look picked by their public player hash,
+so they stay the same from round to round and on every device. The name is
+"Adjective Noun" from 64 upbeat adjectives and 64 sports nouns (e.g. *Swift
+Sprinter*, *Plucky Goalie*: `shared/names.ts`); the look picks each part from
+the next bytes of the hash (`lookFromHash` in `shared/look.ts`). Both are only
+fallbacks: once you type a name or choose a look, that is stored and shown
+instead. The server fills in the same default name on leaderboards for players
+who haven't chosen one.
 
 ## Options (⚙)
 

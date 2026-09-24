@@ -21,6 +21,7 @@ import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simp
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { PLAYER_RE, playerHash } from '../shared/identity';
 import { sanitizeLook } from '../shared/look';
+import { nameFromHash } from '../shared/names';
 import ensureSchema from './db';
 import type { Env } from './env';
 import { allowed, cleanText, json, logError } from './http';
@@ -88,7 +89,7 @@ async function registerOptions(request: Request, db: D1Database): Promise<Respon
   const input = await body<{ player?: unknown; name?: unknown }>(request);
   const who = await posterFor(db, request, input?.player);
   if (!who.ok) return json({ error: who.error }, who.status);
-  const name = moderateName(cleanText(input?.name, 16), '');
+  const name = moderateName(cleanText(input?.name, 24), '');
   let player = await upsertPlayer(db, who.player, name);
   if (!player.user_handle) {
     await db.prepare('UPDATE players SET user_handle = ?1 WHERE id = ?2 AND user_handle IS NULL')
@@ -97,7 +98,7 @@ async function registerOptions(request: Request, db: D1Database): Promise<Respon
   }
   const existing = await db.prepare('SELECT id, transports FROM passkeys WHERE player = ?1')
     .bind(player.id).all<{ id: string; transports: string | null }>();
-  const shown = player.name || 'Runner';
+  const shown = player.name || nameFromHash(player.hash);
   const options = await generateRegistrationOptions({
     rpName: RP_NAME,
     rpID: siteOf(request).rpID,
@@ -182,13 +183,14 @@ async function mergeScores(db: D1Database, from: string, to: string): Promise<vo
     return [
       db.prepare('DELETE FROM daily_scores WHERE day = ?1 AND player = ?2').bind(r.day, to),
       db.prepare('UPDATE daily_scores SET player = ?1, hash = ?2, name = ?3 WHERE day = ?4 AND player = ?5')
-        .bind(to, target?.hash ?? '', target?.name || 'Runner', r.day, from),
+        .bind(to, target?.hash ?? '', target?.name || nameFromHash(target?.hash ?? ''), r.day, from),
     ];
   });
   statements.push(
     db.prepare('DELETE FROM daily_scores WHERE player = ?1').bind(from),
     // A player without a name takes the anonymous player's.
-    db.prepare(`UPDATE players SET name = (SELECT name FROM players WHERE id = ?1)
+    // (The anonymous player may have no row: then there's no name to take.)
+    db.prepare(`UPDATE players SET name = COALESCE((SELECT name FROM players WHERE id = ?1), '')
       WHERE id = ?2 AND name = ''`).bind(from, to),
     db.prepare('DELETE FROM players WHERE id = ?1 AND claimed = 0').bind(from),
   );

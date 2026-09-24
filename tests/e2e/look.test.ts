@@ -1,11 +1,14 @@
 // Customising your runner (🎨 on the start screen). Choosing a look needs a player saved with a
-// passkey; unsaved players get a new random look every round. Rooms see everyone's look.
+// passkey; until then players wear a default look (and name) picked by their hash. Rooms see
+// everyone's look.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Browser, CDPSession, Page } from 'playwright';
 import type { ServerMessage } from '../../src/shared/protocol';
+import { lookFromHash } from '../../src/shared/look';
+import { nameFromHash } from '../../src/shared/names';
 import {
-  BASE, launch, newPlayer, createRoom, drawWheel, pause,
+  BASE, launch, createRoom, drawWheel, pause,
 } from './helpers';
 
 // Passkeys need a domain name, not an IP address.
@@ -32,26 +35,39 @@ async function device(b: Browser): Promise<{ page: Page; cdp: CDPSession; authen
   return { page, cdp, authenticatorId };
 }
 
-test('unsaved players get a new random look each round, and can’t choose one', async () => {
-  const p = await newPlayer(browser, 'Ray', { width: 1280, height: 800 });
+test('unsaved players keep a default look and name picked by their hash, and can’t choose a look', async () => {
+  // No name set: a brand-new player.
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const p = await ctx.newPage();
+  const errors: string[] = [];
+  p.on('pageerror', (e) => errors.push(e.message));
   await p.goto(`${BASE}?stage=990`);
+  await p.waitForFunction(() => !document.getElementById('account')?.hidden);
+  await p.waitForFunction(() => JSON.parse(localStorage.getItem('draw-roll-race') ?? '{}').playerHash);
+  const hash: string = await p.evaluate(() => JSON.parse(localStorage.getItem('draw-roll-race') ?? '{}').playerHash);
+  const mine = JSON.stringify(lookFromHash(hash));
+  assert.equal(await worn(p), mine, 'wears the default look for the hash');
+  assert.equal(await p.getAttribute('#account-name', 'placeholder'), nameFromHash(hash), 'shows the default name');
+
   await p.click('#start-look');
   assert.equal(await p.isVisible('#look-locked'), true, 'asks to save with a passkey');
   assert.equal(await p.isDisabled('[aria-label="Next hat"]'), true);
   await p.click('#look-close');
   assert.equal(await p.locator('#options #look-pickers').count(), 0, 'not in Options any more');
 
-  // Three rounds: the look changes (all three alike would be a 1 in 2 million chance).
-  const looks = [await worn(p)];
+  // The look stays the same round after round, and after a reload.
   for (let round = 0; round < 2; round += 1) {
     await drawWheel(p);
     await p.waitForFunction(() => window.drr.state.racing);
-    looks.push(await worn(p));
+    assert.equal(await worn(p), mine, `round ${round + 1}`);
     await p.click('#exit-btn');
   }
-  assert.ok(new Set(looks).size > 1, `looks changed: ${looks.join(' ')}`);
-  assert.deepEqual(p.errors, []);
-  await p.context().close();
+  await p.reload();
+  await p.waitForFunction(() => !document.getElementById('account')?.hidden);
+  assert.equal(await worn(p), mine, 'after a reload');
+
+  assert.deepEqual(errors, []);
+  await ctx.close();
 });
 
 test('saving with a passkey unlocks your look, which is kept and follows the passkey', async () => {
@@ -90,12 +106,15 @@ test('saving with a passkey unlocks your look, which is kept and follows the pas
   await b.page.context().close();
 });
 
-test('others in a room see your look', async () => {
-  const p = await newPlayer(browser, 'Mo');
+test('others in a room see your look, and your default name if you haven’t chosen one', async () => {
+  const ctx = await browser.newContext();
+  const p = await ctx.newPage();
+  const errors: string[] = [];
+  p.on('pageerror', (e) => errors.push(e.message));
   const code = await createRoom(p, { isPublic: false });
   const mine = JSON.parse(await worn(p));
+  const hash: string = await p.evaluate(() => JSON.parse(localStorage.getItem('draw-roll-race') ?? '{}').playerHash);
 
-  // Someone joins: the room tells them how Mo looks.
   const ws = new WebSocket(`${BASE.replace('http', 'ws')}api/rooms/${code}/ws?name=Watcher`);
   const inbox: ServerMessage[] = [];
   ws.addEventListener('message', (e) => inbox.push(JSON.parse(String(e.data))));
@@ -104,8 +123,11 @@ test('others in a room see your look', async () => {
     welcome = inbox.find((m) => m.type === 'welcome') as typeof welcome;
     await pause(100);
   }
-  assert.deepEqual(welcome?.players.find((x) => x.name === 'Mo')?.look, mine);
+  // Someone joins: the room tells them how the host looks, under the host's default name.
+  const host = welcome?.players.find((x) => x.name === nameFromHash(hash));
+  assert.ok(host, `host named ${nameFromHash(hash)}: ${welcome?.players.map((x) => x.name).join(', ')}`);
+  assert.deepEqual(host.look, mine);
   ws.close();
-  assert.deepEqual(p.errors, []);
-  await p.context().close();
+  assert.deepEqual(errors, []);
+  await ctx.close();
 });

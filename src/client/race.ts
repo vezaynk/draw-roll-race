@@ -7,7 +7,6 @@ import { hasLimbs } from '../shared/limbs';
 import { runnerAtStart, stepPlayer } from '../shared/replay';
 import { swapLimbs } from '../shared/runner';
 import type { Shattered } from '../shared/types';
-import { lookForRound } from './appearance';
 import { COLORS } from './colors';
 import { byId } from './dom';
 import {
@@ -179,8 +178,6 @@ export interface RaceOptions {
 }
 
 export function startRace({ countdownMs = 0 }: RaceOptions = {}): void {
-  // Players who haven't saved theirs get a new random look every round.
-  if (!save.signedIn) lookForRound();
   const player = playerAtStart();
   state.player = player;
   state.cpu = tutorialCpu();

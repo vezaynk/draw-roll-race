@@ -65,7 +65,22 @@ export function sanitizeLook(value: unknown): Look {
   };
 }
 
-/** A random look (for players who haven't saved theirs: they get a new one each round). */
+/**
+ * The default look for a player hash (32 hex digits), used until the player chooses one: bytes
+ * 3 to 6 pick the hair, hat, eyes and glasses (bytes 1 and 2 pick the default name).
+ */
+export function lookFromHash(hash: string): Look {
+  const byte = (i: number) => Number.parseInt(hash.slice(i * 2, i * 2 + 2), 16) || 0;
+  const nth = <K extends LookPart>(part: K, i: number): Look[K] => {
+    const options = LOOK_OPTIONS[part];
+    return options[byte(i) % options.length];
+  };
+  return {
+    hair: nth('hair', 2), hat: nth('hat', 3), eyes: nth('eyes', 4), glasses: nth('glasses', 5),
+  };
+}
+
+/** A random look (Shuffle). */
 export function randomLook(random: () => number = Math.random): Look {
   const any = <K extends LookPart>(part: K): Look[K] => {
     const options = LOOK_OPTIONS[part];

@@ -170,7 +170,7 @@ export class RaceRoom extends DurableObject<Env> {
     const { room } = this;
     const player: Player = resumed ? { ...resumed, token } : {
       id: crypto.randomUUID().slice(0, 8),
-      name: moderateName(cleanText(url.searchParams.get('name'), 16), `Runner ${room.joins + 1}`),
+      name: moderateName(cleanText(url.searchParams.get('name'), 24), `Runner ${room.joins + 1}`),
       color: this.freeColor(),
       joinedAt: Date.now(),
       token,
@@ -257,7 +257,7 @@ export class RaceRoom extends DurableObject<Env> {
     },
 
     name: async (ws, me, msg) => {
-      const name = moderateName(cleanText(msg.name, 16), null);
+      const name = moderateName(cleanText(msg.name, 24), null);
       if (!name) {
         sendTo(ws, { type: 'notice', message: 'That name isn’t allowed. Try another one.' });
         return;
