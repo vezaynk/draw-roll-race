@@ -283,3 +283,11 @@ body.pad-large #pad-wrap { width: min(94vw, 540px); }
 @media (prefers-reduced-motion: reduce) {
   #toast, #pad-hint { transition: none; }
 }
+
+/* ---------- Your player (passkeys) ---------- */
+.btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.btn-row button { padding: 6px 12px; font-size: 14px; }
+.btn-row button[hidden] { display: none; }
+.menu-note { margin: 0; font-size: 13px; color: var(--muted); }
+.menu-note:empty { display: none; }
+#account-note.warn { color: #b3261e; }

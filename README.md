@@ -54,6 +54,8 @@ gold ghost.
 
 ## Options (⚙)
 
+- **Your player:** your name, and passkeys to keep your player on any device (see
+  [Players and passkeys](#players-and-passkeys)).
 - **Solo opponents:** 0–7 CPUs at easy, normal, hard or mixed difficulty.
 - **Race your best run:** your fastest run on each course comes back as a
   see-through "ghost" to beat.
@@ -121,6 +123,25 @@ message in the lobby.
   the run reached the finish) are recorded in Workers Analytics Engine, in the
   `draw_roll_race` dataset (`draw_roll_race_preview` for PR previews).
 
+### Players and passkeys
+
+- Every player has a secret random ID (a UUID) and a display name, both saved in the
+  browser. The server never sends anyone's ID out: leaderboards carry a public hash of it
+  (the first 128 bits of SHA-256), and each browser finds its own rows by hashing its own ID.
+- **Options → Your player → Save with a passkey** claims the player: the server keeps the
+  passkey's public key with the player. From then on, posting as that player needs a
+  signed-in session (an HttpOnly cookie), not just the ID.
+- **Sign in with a passkey** on another device makes it the same player: the server sends
+  that player's ID to the signed-in browser only. Any daily times the device had as an
+  anonymous player move over, keeping the better time for each day.
+- A player can have any number of passkeys; a signed-in device adds one with **Add another
+  passkey**. **Log out** ends the session and forgets everything the game saved on that
+  device, which then starts as a new player.
+- Passkeys belong to the exact site address, so each PR preview has its own. Challenges are
+  single-use and expire after five minutes; sessions are stored as hashes of their tokens.
+- The player and their daily scores follow the passkey; other progress (best times,
+  unlocked stages, ghosts) stays on each device.
+
 ### CPUs and generated courses
 
 - Every CPU gets a personality from its seed: how fast its limbs spin, how
@@ -171,7 +192,8 @@ TypeScript throughout, written to the Airbnb style guide's principles (no linter
 - `src/worker/`: the Cloudflare Worker.
   - `index.ts` (routes), `room.ts` (the `RaceRoom` Durable Object), `roomState.ts`,
     `cpuSimulation.ts` (runs a room's CPUs), `directory.ts` (the public room list),
-    `daily.ts` (the leaderboard), `verify.ts` (checks a run by replaying it), `runCheck.ts` (the `RunCheck` Durable Object that replays
+    `daily.ts` (the leaderboard), `auth.ts` (passkeys), `players.ts` (players and sessions),
+    `db.ts` (the D1 tables), `verify.ts` (checks a run by replaying it), `runCheck.ts` (the `RunCheck` Durable Object that replays
     runs), `moderation.ts`, `http.ts`, `env.ts`.
 - `tools/sim.ts`: checks that CPUs finish every kind of course
   (`npm run sim -- [endless] [random] [cpusPerDifficulty]`).
