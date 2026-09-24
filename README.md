@@ -27,8 +27,6 @@ Open `index.html` in a browser. There is no build step and no dependencies.
   CPU crosses the finish line.
 - Progress and best times are saved in your browser. When no race is running,
   tap the stage name to replay any stage you've unlocked.
-- **Share my runner** opens the share sheet on phones. On desktop it copies
-  the image and opens a post on X.
 
 ## Code
 
@@ -36,6 +34,6 @@ Open `index.html` in a browser. There is no build step and no dependencies.
   impulse physics (ground and ceiling contacts, friction, conveyor belts, ice,
   water and mud).
 - `src/game.js`: the drawing pad, camera and rendering, the HUD, the CPU and
-  race flow, and sharing.
+  race flow.
 - `tools/sim.js`: headless check that the CPU can finish every stage. Run it
   with `node tools/sim.js [stages]`.
