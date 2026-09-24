@@ -20,8 +20,15 @@ Open `index.html` in a browser. There is no build step and no dependencies.
   - A long arm helps you climb walls.
 - The CPU also switches shapes, but it waits a few seconds before each switch
   and its limbs spin slower than yours.
+- While you draw, a ring shows which joint the stroke will attach to.
 - There are three fixed stages. After the last one, Endless mode generates new
   courses.
+- **↻** restarts the current stage at any time. You get a message when the
+  CPU crosses the finish line.
+- Progress and best times are saved in your browser. When no race is running,
+  tap the stage name to replay any stage you've unlocked.
+- **Share my runner** opens the share sheet on phones. On desktop it copies
+  the image and opens a post on X.
 
 ## Code
 

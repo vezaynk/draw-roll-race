@@ -13,9 +13,9 @@
 <header id="hud">
   <div class="bar" id="progress" aria-hidden="true"></div>
   <div class="row">
-    <span id="stage-label">Stage 1</span>
+    <button id="stage-label" type="button" title="Switch stage">Stage 1</button>
     <span id="section-label"></span>
-    <span id="timer">0.00 s</span>
+    <span class="right"><span id="timer">0.00 s</span><button id="restart-btn" type="button" aria-label="Restart stage" title="Restart stage">↻</button></span>
   </div>
 </header>
 
@@ -24,9 +24,6 @@
 <section id="pad-wrap">
   <p id="pad-hint">Draw from the shoulder or hip to give your runner arms or legs</p>
   <canvas id="pad" width="320" height="200" aria-label="Drawing pad"></canvas>
-  <div class="pad-tools">
-    <button id="clear-btn" type="button">Clear</button>
-  </div>
 </section>
 
 <div id="result" hidden>
@@ -35,6 +32,7 @@
     <p id="result-stage"></p>
     <p class="big" id="result-time"></p>
     <p id="result-cpu"></p>
+    <p id="result-best"></p>
     <button id="next-btn" type="button" class="primary"></button>
     <button id="share-btn" type="button">Share my runner</button>
   </div>

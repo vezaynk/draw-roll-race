@@ -12,10 +12,20 @@
   const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
   const COLORS = { ink: cssVar('--ink'), player: cssVar('--player'), cpu: cssVar('--cpu'), ground: cssVar('--ground') };
 
+  // ---------------- Saved progress (best effort: storage may be unavailable) ----------------
+  const SAVE_KEY = 'draw-roll-race';
+  const save = (() => {
+    try { return Object.assign({ stage: 0, unlocked: 0, best: {} }, JSON.parse(localStorage.getItem(SAVE_KEY) || '{}')); }
+    catch (e) { return { stage: 0, unlocked: 0, best: {} }; }
+  })();
+  function persist() {
+    try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* ignore */ }
+  }
+
   // ---------------- State ----------------
   const state = {
-    stage: 0,
-    course: D.buildCourse(0),
+    stage: save.stage,
+    course: D.buildCourse(save.stage),
     limbs: { arm: [], leg: [] },
     player: null, cpu: null,
     cpuPlan: 0, cpuWaitFrom: -1, cpuTime: null,
@@ -55,11 +65,21 @@
     pctx.strokeStyle = COLORS.player; pctx.lineWidth = 5;
     for (const s of [...state.limbs.arm, ...state.limbs.leg]) polyline(pctx, s);
     if (stroke && stroke.length > 1) { pctx.globalAlpha = 0.55; polyline(pctx, stroke); pctx.globalAlpha = 1; }
-    // joints
+    // joints; while drawing, ring the one the stroke will attach to
+    const target = stroke ? jointFor(stroke[0]) : null;
     for (const j of [FIG.shoulder, FIG.hip]) {
+      if (j === target) {
+        pctx.beginPath(); pctx.arc(j.x, j.y, 12, 0, Math.PI * 2);
+        pctx.strokeStyle = COLORS.player; pctx.lineWidth = 2.5; pctx.stroke();
+      }
       pctx.beginPath(); pctx.arc(j.x, j.y, 6, 0, Math.PI * 2);
       pctx.fillStyle = COLORS.player; pctx.fill();
     }
+  }
+  function jointFor(p) {
+    const dS = Math.hypot(p.x - FIG.shoulder.x, p.y - FIG.shoulder.y);
+    const dH = Math.hypot(p.x - FIG.hip.x, p.y - FIG.hip.y);
+    return dS < dH ? FIG.shoulder : FIG.hip;
   }
 
   pad.addEventListener('pointerdown', e => {
@@ -81,26 +101,31 @@
     stroke = null;
     if (s.length >= 3) {
       // Attach to whichever joint the stroke started closer to, shifting it so it starts there.
-      const dS = Math.hypot(s[0].x - FIG.shoulder.x, s[0].y - FIG.shoulder.y);
-      const dH = Math.hypot(s[0].x - FIG.hip.x, s[0].y - FIG.hip.y);
-      const kind = dS < dH ? 'arm' : 'leg';
-      const j = kind === 'arm' ? FIG.shoulder : FIG.hip;
+      const j = jointFor(s[0]);
+      const kind = j === FIG.shoulder ? 'arm' : 'leg';
       const dx = j.x - s[0].x, dy = j.y - s[0].y;
       state.limbs[kind] = [s.map(p => ({ x: p.x + dx, y: p.y + dy }))];
       onLimbsChanged();
+    } else {
+      showHint('Drag to draw a line — a tap is too short');
     }
     renderPad();
   }
   pad.addEventListener('pointerup', endStroke);
   pad.addEventListener('pointercancel', endStroke);
 
-  $('clear-btn').addEventListener('click', () => {
-    state.limbs = { arm: [], leg: [] };
-    if (state.racing) state.player = D.swapLimbs(state.course, state.player, state.limbs);
-    renderPad();
-  });
+  const HINT = $('pad-hint').textContent;
+  let hintTimer = 0;
+  function showHint(text, ms) {
+    const el = $('pad-hint');
+    el.textContent = text;
+    el.classList.remove('hidden');
+    clearTimeout(hintTimer);
+    if (ms !== 0) hintTimer = setTimeout(() => el.classList.add('hidden'), ms || 2200);
+  }
 
   function onLimbsChanged() {
+    clearTimeout(hintTimer);
     $('pad-hint').classList.add('hidden');
     if (state.racing) state.player = D.swapLimbs(state.course, state.player, state.limbs);
     else if (!state.finished) startRace();
@@ -129,6 +154,7 @@
     flag.className = 'flag'; flag.textContent = '🏁';
     progress.appendChild(flag);
     $('stage-label').textContent = stageName(state.stage);
+    updateStageButton();
   }
   function stageName(n) { return n < D.STAGES.length ? 'Stage ' + (n + 1) + ' / ' + D.STAGES.length : 'Endless ' + (n - D.STAGES.length + 1); }
   function updateHud() {
@@ -143,7 +169,7 @@
     const sec = c.sections.find(s => px >= s.from && px < s.to) || null;
     if (sec !== state.section) {
       state.section = sec;
-      $('section-label').textContent = sec ? sec.label : '';
+      $('section-label').textContent = sec ? sec.label : state.cpuTime !== null ? 'CPU finished' : '';
       if (sec && state.racing) toast(sec.label, 1100);
     }
   }
@@ -180,9 +206,11 @@
     D.settle(c, state.cpu, c.startX);
     state.cpuPlan = 0; state.cpuWaitFrom = -1; state.cpuTime = null;
     state.time = 0; state.racing = true; state.finished = false;
+    updateStageButton();
     toast('GO!', 700);
     lastTs = 0; acc = 0;
-    requestAnimationFrame(frame);
+    cancelAnimationFrame(rafId);
+    rafId = requestAnimationFrame(frame);
   }
 
   function stepCpu() {
@@ -197,10 +225,15 @@
         state.cpu = D.swapLimbs(c, state.cpu, D.POSES[c.plan[k].pose]);
       }
     }
-    if (state.cpu.x >= c.finishX) state.cpuTime = state.time;
+    if (state.cpu.x >= c.finishX) {
+      state.cpuTime = state.time;
+      toast('CPU finished!', 1600);
+      showHint('CPU finished — keep going, or tap ↻ to restart', 3500);
+      $('section-label').textContent = 'CPU finished';
+    }
   }
 
-  let lastTs = 0, acc = 0;
+  let lastTs = 0, acc = 0, rafId = 0;
   function frame(ts) {
     if (!state.racing) return;
     if (!lastTs) lastTs = ts;
@@ -220,11 +253,12 @@
     }
     updateHud();
     render();
-    if (state.racing) requestAnimationFrame(frame);
+    if (state.racing) rafId = requestAnimationFrame(frame);
   }
 
   function finish() {
     state.racing = false; state.finished = true;
+    updateStageButton();
     const win = state.cpuTime === null;
     const title = $('result-title');
     title.textContent = win ? 'You win!' : 'CPU wins…';
@@ -234,11 +268,47 @@
     $('result-cpu').textContent = win ? 'CPU was still racing' : 'CPU finished in ' + state.cpuTime.toFixed(2) + ' s';
     $('next-btn').textContent = win ? (state.stage + 1 < D.STAGES.length ? 'Next stage' : state.stage + 1 === D.STAGES.length ? 'Endless mode' : 'Next course') : 'Try again';
     $('next-btn').dataset.win = win ? '1' : '';
+    const prev = save.best[state.stage];
+    const best = $('result-best');
+    if (win && (prev === undefined || state.time < prev)) {
+      save.best[state.stage] = +state.time.toFixed(2);
+      best.textContent = prev === undefined ? 'First clear!' : 'New best! (was ' + prev.toFixed(2) + ' s)';
+      best.className = 'new';
+    } else {
+      best.textContent = prev === undefined ? '' : 'Best: ' + prev.toFixed(2) + ' s';
+      best.className = '';
+    }
+    if (win) { save.stage = state.stage + 1; save.unlocked = Math.max(save.unlocked || 0, save.stage); }
+    persist();
     $('result').hidden = false;
     updateHud();
     render();
     $('next-btn').focus();
   }
+
+  // Before a race starts (or after it ends), tap the stage name to cycle through unlocked stages.
+  function updateStageButton() {
+    const btn = $('stage-label');
+    const can = !state.racing && (save.unlocked || 0) > 0;
+    btn.disabled = !can;
+    btn.classList.toggle('switchable', can);
+  }
+  $('stage-label').addEventListener('click', () => {
+    if (state.racing) return;
+    state.stage = (state.stage + 1) % ((save.unlocked || 0) + 1);
+    save.stage = state.stage; persist();
+    $('result').hidden = true;
+    resetStage();
+    if (!state.limbs.arm.length && !state.limbs.leg.length) showHint(HINT, 0);
+  });
+
+  $('restart-btn').addEventListener('click', () => {
+    $('result').hidden = true;
+    const drawn = state.limbs.arm.length || state.limbs.leg.length;
+    resetStage();
+    if (drawn) startRace();
+    else showHint(HINT, 0);
+  });
 
   $('next-btn').addEventListener('click', () => {
     if ($('next-btn').dataset.win) state.stage++;
@@ -448,28 +518,61 @@
     return cv;
   }
 
+  // Phones: the OS share sheet with the image attached (pick X there).
+  // Desktop: copy the image to the clipboard and open X's composer so it can be pasted.
+  // Anything that fails falls back to an overlay with the image, a download link and a post link.
+  let sharing = false;
   $('share-btn').addEventListener('click', () => {
-    if (!state.player) return;
+    if (!state.player || sharing) return;
     const cv = runnerImage();
-    const text = 'I finished ' + stageName(state.stage) + ' of Draw Roll Race in ' + state.time.toFixed(2) + ' s!';
-    cv.toBlob(blob => {
-      const file = new File([blob], 'draw-roll-race.png', { type: 'image/png' });
-      if (navigator.canShare && navigator.canShare({ files: [file] })) {
-        navigator.share({ files: [file], text }).catch(err => { if (err && err.name !== 'AbortError') showImage(cv); });
-      } else {
-        showImage(cv);
-      }
-    }, 'image/png');
+    const dataUrl = cv.toDataURL('image/png');
+    const bin = atob(dataUrl.split(',')[1]);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    const blob = new Blob([bytes], { type: 'image/png' });
+    const file = new File([blob], 'draw-roll-race.png', { type: 'image/png' });
+    const won = $('next-btn').dataset.win;
+    const text = (won ? 'Cleared ' : 'Raced ') + stageName(state.stage) + ' in ' + state.time.toFixed(2) + ' s!\n\n' +
+      location.href.split(/[?#]/)[0] + '\n#DrawRollRace';
+    const postUrl = 'https://x.com/intent/post?text=' + encodeURIComponent(text);
+
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      sharing = true;
+      navigator.share({ files: [file], text })
+        .catch(err => { if (!err || err.name !== 'AbortError') showImage(dataUrl, postUrl, false); })
+        .finally(() => { sharing = false; });
+      return;
+    }
+    const openX = copied => {
+      const w = window.open(postUrl, '_blank', 'noopener');
+      if (copied) toast('Image copied — paste it into your post', 2200);
+      if (!copied || !w) showImage(dataUrl, postUrl, copied);
+    };
+    if (navigator.clipboard && window.ClipboardItem) {
+      sharing = true;
+      navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+        .then(() => openX(true), () => openX(false))
+        .finally(() => { sharing = false; });
+    } else {
+      openX(false);
+    }
   });
 
-  function showImage(cv) {
+  function showImage(dataUrl, postUrl, copied) {
     const old = $('share-box'); if (old) old.remove();
     const box = document.createElement('div');
     box.id = 'share-box';
-    const img = new Image(); img.src = cv.toDataURL('image/png'); img.alt = 'Your runner';
-    const a = document.createElement('a');
-    a.href = img.src; a.download = 'draw-roll-race.png'; a.textContent = 'Download image';
-    box.append(img, a);
+    const img = new Image(); img.src = dataUrl; img.alt = 'Your runner';
+    const note = document.createElement('p');
+    note.textContent = copied ? 'Image copied to your clipboard. Tap outside to close.' : 'Save the image, then attach it to your post. Tap outside to close.';
+    const links = document.createElement('div');
+    links.className = 'links';
+    const dl = document.createElement('a');
+    dl.href = dataUrl; dl.download = 'draw-roll-race.png'; dl.textContent = 'Download';
+    const post = document.createElement('a');
+    post.href = postUrl; post.target = '_blank'; post.rel = 'noopener'; post.textContent = 'Post on X';
+    links.append(dl, post);
+    box.append(img, note, links);
     box.addEventListener('pointerdown', e => { if (e.target === box) box.remove(); });
     document.body.appendChild(box);
   }
