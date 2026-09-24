@@ -16,7 +16,7 @@ export interface Env {
   DB?: D1Database;
   CREATE_LIMITER?: RateLimiter;
   SUBMIT_LIMITER?: RateLimiter;
-  /** Workers Analytics Engine (optional). */
+  /** Workers Analytics Engine (stats are skipped without it). */
   STATS?: AnalyticsEngineDataset;
   /** "1" lets rooms start the short test courses (local test runs only). */
   ALLOW_TEST_STAGES?: string;

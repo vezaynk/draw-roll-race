@@ -138,7 +138,7 @@ async function submit(env: Env, db: D1Database, request: Request): Promise<Respo
   if (!inputs) return json({ error: 'The run is missing its recording.' }, 422);
   let verdict: Verdict;
   try {
-    verdict = await verifyRun(env, dailyStage(day), inputs, MAX_RUN_SECONDS);
+    verdict = await verifyRun(env, 'daily', dailyStage(day), inputs, MAX_RUN_SECONDS);
   } catch (e) {
     logError('daily replay failed', e);
     return json({ error: 'The server could not check your run. Try again.' }, 503);

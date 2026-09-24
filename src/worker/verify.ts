@@ -15,9 +15,16 @@ export interface Verdict {
   ms: number;
 }
 
-/** Replays a run on stage `stage` for at most maxSeconds of race time. Throws if the check fails to run. */
+/** Where a run being checked comes from (for stats). */
+export type RunSource = 'daily' | 'room';
+
+/**
+ * Replays a run on stage `stage` for at most maxSeconds of race time, and records the check in
+ * Workers Analytics Engine. Throws if the check fails to run.
+ */
 export default async function verifyRun(
   env: Env,
+  source: RunSource,
   stage: number,
   inputs: RunInput[],
   maxSeconds: number,
@@ -31,5 +38,11 @@ export default async function verifyRun(
     progress = await check.advance();
     if (!progress) throw new Error('replay lost its state');
   } while (!progress.done);
-  return { finished: progress.finished, time: progress.time, ms: Date.now() - started };
+  const verdict = { finished: progress.finished, time: progress.time, ms: Date.now() - started };
+  env.STATS?.writeDataPoint({
+    blobs: ['verify', source, verdict.finished ? 'finished' : 'not-finished'],
+    doubles: [verdict.ms, verdict.time, inputs.length],
+    indexes: ['verify'],
+  });
+  return verdict;
 }

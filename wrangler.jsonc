@@ -31,8 +31,11 @@
     { "name": "CREATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
     { "name": "SUBMIT_LIMITER", "namespace_id": "1002", "simple": { "limit": 20, "period": 60 } }
   ],
-  // Race and daily-run stats go to Workers Analytics Engine through a STATS binding. It is left
-  // out until Analytics Engine is enabled on the account (the code skips stats without it).
+  // Race, daily-run and replay-check numbers go to Workers Analytics Engine (the code skips
+  // stats if the binding is missing).
+  "analytics_engine_datasets": [
+    { "binding": "STATS", "dataset": "draw_roll_race" }
+  ],
   "observability": { "enabled": true },
   // Pull request previews (wrangler preview): their own Durable Objects and a separate database.
   "previews": {
@@ -49,6 +52,9 @@
     "ratelimits": [
       { "name": "CREATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
       { "name": "SUBMIT_LIMITER", "namespace_id": "1002", "simple": { "limit": 20, "period": 60 } }
+    ],
+    "analytics_engine_datasets": [
+      { "binding": "STATS", "dataset": "draw_roll_race_preview" }
     ]
   }
 }

@@ -506,7 +506,7 @@ export class RaceRoom extends DurableObject<Env> {
     let ms = 0;
     if (inputs) {
       try {
-        const verdict = await verifyRun(this.env, stage, inputs, RACE_LIMIT_MS / 1000);
+        const verdict = await verifyRun(this.env, 'room', stage, inputs, RACE_LIMIT_MS / 1000);
         ms = verdict.ms;
         ok = verdict.finished && verdict.time <= elapsed + CLOCK_SLACK;
         time = Math.round(verdict.time * 100) / 100;

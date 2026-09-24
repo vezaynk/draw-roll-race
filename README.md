@@ -114,8 +114,9 @@ message in the lobby.
   (`src/shared/fmath.ts`).
 - Player and room names are checked against a list of blocked words. Creating
   rooms and sending daily runs are rate-limited per network.
-- Race and daily-run numbers can go to Workers Analytics Engine: enable it on
-  the account, then add a `STATS` binding in `wrangler.jsonc`.
+- Race results, daily runs and replay checks (how long each took, and whether
+  the run reached the finish) are recorded in Workers Analytics Engine, in the
+  `draw_roll_race` dataset (`draw_roll_race_preview` for PR previews).
 
 ### CPUs and generated courses
 
