@@ -27,6 +27,8 @@ export interface RoomState {
   lastResults: RaceResult[];
   cpus: RoomCpu[];
   cpuSerial: number;
+  ready: string[];
+  nextStage: number;
   /** Reconnect token -> player who dropped. */
   away: Record<string, AwayPlayer>;
 }
@@ -48,6 +50,8 @@ export function freshRoom(): RoomState {
     lastResults: [],
     cpus: [],
     cpuSerial: 0,
+    ready: [],
+    nextStage: 0,
     away: {},
   };
 }

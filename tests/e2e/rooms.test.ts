@@ -2,7 +2,7 @@
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  BASE, launch, newPlayer, drawWheel, text, waitForText, createRoom,
+  BASE, launch, newPlayer, drawWheel, text, waitForText, createRoom, joinByLink,
 } from './helpers';
 
 const browser = await launch();
@@ -95,4 +95,37 @@ test('new room codes are unique and names are moderated', async () => {
   assert.match(await text(p, '#room-name'), /room/i);
   assert.doesNotMatch(await text(p, '#player-list'), /sh1t/i);
   await p.context().close();
+});
+
+test('everyone ready starts the race; latecomers can pick whom to watch; emotes', async () => {
+  const eve = await newPlayer(browser, 'Eve');
+  const code = await createRoom(eve, { isPublic: false, testStage: 990 });
+  await drawWheel(eve);
+  const fay = await newPlayer(browser, 'Fay');
+  await joinByLink(fay, code, 990);
+  await drawWheel(fay);
+
+  // One of two ready: nothing starts yet.
+  await eve.click('#ready-btn');
+  await waitForText(fay, '#lobby-status', /1 of 2 ready/);
+  assert.match(await text(fay, '#player-list'), /ready/i);
+
+  // Both ready: the race starts by itself.
+  await fay.click('#ready-btn');
+  await fay.waitForFunction(() => window.drr.state.racing, undefined, { timeout: 5000 });
+
+  // Gus joins mid-race and watches; he can switch whom the camera follows.
+  const gus = await newPlayer(browser, 'Gus');
+  await joinByLink(gus, code, 990);
+  await waitForText(gus, '#follow-btn', /Watching the leader/i, 10000);
+  await gus.click('#follow-btn');
+  await waitForText(gus, '#follow-btn', /Watching (Eve|Fay)/i);
+
+  // Back in the lobby, an emote reaches the others.
+  await waitForText(eve, '#results-box', /Last race/i, 60000);
+  await gus.click('#emote-bar button:first-child');
+  await eve.waitForFunction(() => /Gus 👋/.test(document.getElementById('toast')?.textContent ?? ''), undefined, { timeout: 5000 });
+
+  [eve, fay, gus].forEach((p) => assert.deepEqual(p.errors, []));
+  await Promise.all([eve, fay, gus].map((p) => p.context().close()));
 });

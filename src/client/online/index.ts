@@ -1,13 +1,16 @@
 // Online rooms: joining and leaving, the messages from the room, and the hooks that put other
 // racers into the game. CPU racers are run by the room itself; browsers only draw them.
 import { encodeLimbs, hasLimbs } from '../../shared/limbs';
-import { CODE_RE } from '../../shared/protocol';
+import {
+  CODE_RE, EMOTES, RANDOM_COURSE, SAME_COURSE,
+} from '../../shared/protocol';
 import type { RoomInfo, ServerMessage } from '../../shared/protocol';
 import { byId, ordinal } from '../dom';
 import {
-  DEFAULT_HINT, showHint, toast, updateHud, updateStageButton,
+  DEFAULT_HINT, showHint, stageName, toast, updateHud, updateStageButton,
 } from '../hud';
 import { resetStage, startRace, stopRace } from '../race';
+import { drawBubble, labelSpot } from '../render/draw';
 import { render } from '../render/scene';
 import { spawnShards } from '../render/shards';
 import { hooks, state } from '../state';
@@ -27,6 +30,10 @@ import type { RemoteRacer } from './remote';
 
 /** Positions sent per second (about 15). */
 const SEND_EVERY_MS = 66;
+/** How long an emote bubble stays up. */
+const EMOTE_MS = 2500;
+/** Matches the room's limit on how often one person can send an emote. */
+const EMOTE_GAP_MS = 700;
 const WATCHING = 'A race is under way. You can watch it and join the next one.';
 
 const net = {
@@ -40,6 +47,11 @@ const net = {
   racingIn: false,
   lastSend: 0,
   idleRaf: 0,
+  /** Whom the camera follows while you watch (null: whoever is in front). */
+  following: null as string | null,
+  lastEmote: 0,
+  /** Racer id → the emote they sent and when its bubble goes. */
+  emotes: new Map<string, { text: string; until: number }>(),
 };
 
 const params = new URLSearchParams(window.location.search);
@@ -49,6 +61,12 @@ const testStage = Number.parseInt(params.get('teststage') ?? '', 10);
 const nameInput = () => byId<HTMLInputElement>('my-name');
 const isHost = () => !!net.room && !!net.you && net.room.hostId === net.you;
 const send: RoomConnection['send'] = (msg) => net.conn?.send(msg);
+
+function courseName(stage: number | undefined): string {
+  if (stage === RANDOM_COURSE) return 'Random course';
+  if (stage === SAME_COURSE) return 'Same course again';
+  return stageName(stage ?? 0).replace(/ \/ \d+$/, '');
+}
 
 function refreshLobby(): void {
   if (!net.conn) return;
@@ -60,8 +78,55 @@ function refreshLobby(): void {
     youDrew: hasLimbs(state.limbs),
     people: [...net.people.values()],
     cpus: [...net.cpus.values()],
+    nextCourse: courseName(net.room?.nextStage),
     onRemoveCpu: (id) => send({ type: 'removeCpu', id }),
   });
+}
+
+/** Other racers with positions this race (none between races). */
+function racing() {
+  return net.conn && net.room?.phase === 'racing'
+    ? visibleRacers([...net.people.values(), ...net.cpus.values()])
+    : [];
+}
+
+/** While you watch a race, a button shows whom the camera follows and switches to the next. */
+function updateFollowButton(): void {
+  const button = byId('follow-btn');
+  const others = racing();
+  const watching = !net.racingIn && others.length > 0;
+  button.hidden = !watching;
+  if (!watching) return;
+  const followed = others.find(({ racer }) => racer.id === net.following)?.racer;
+  const label = `Watching ${followed ? followed.name : 'the leader'} · next ▸`;
+  if (button.textContent !== label) button.textContent = label;
+}
+
+function followNext(): void {
+  const ids = racing().map(({ racer }) => racer.id);
+  const i = net.following ? ids.indexOf(net.following) : -1;
+  // After the last racer comes "the leader" again (null).
+  net.following = i + 1 < ids.length ? ids[i + 1] : null;
+  updateFollowButton();
+}
+
+function emoteOf(id: string): string | null {
+  const emote = net.emotes.get(id);
+  if (!emote || emote.until < performance.now()) return null;
+  return emote.text;
+}
+
+/** Shows an emote: a bubble over the racer if they are on screen, otherwise a toast. */
+function showEmote(id: string, e: number): void {
+  const text = EMOTES[e];
+  if (!text) return;
+  net.emotes.set(id, { text, until: performance.now() + EMOTE_MS });
+  const onScreen = id === net.you ? !!state.player : racing().some(({ racer }) => racer.id === id);
+  if (!onScreen) {
+    const who = id === net.you ? 'You' : (net.people.get(id)?.name ?? 'Someone');
+    toast(`${who} ${text}`, 1400);
+  }
+  render();
 }
 
 /** Keeps drawing others while you are not racing yourself (lobby, finished, watching). */
@@ -69,6 +134,7 @@ function startIdleLoop(): void {
   cancelAnimationFrame(net.idleRaf);
   const loop = () => {
     if (!net.conn || state.racing) return;
+    updateFollowButton();
     updateHud();
     render();
     net.idleRaf = requestAnimationFrame(loop);
@@ -112,6 +178,9 @@ function onWelcome(m: Extract<ServerMessage, { type: 'welcome' }>): void {
   // Show the name the room uses (it replaces names that aren't allowed).
   const me = m.players.find((p) => p.id === m.you);
   if (me) nameInput().value = me.name;
+  syncStageSelect();
+  // Test runs pick the short test course for ready-up races too.
+  if (isHost() && Number.isInteger(testStage)) send({ type: 'settings', nextStage: testStage });
   if (hasLimbs(state.limbs)) send({ type: 'limbs', limbs: encodeLimbs(state.limbs) });
   const stillRacing = m.resumed && m.room.phase === 'racing' && net.racingIn && net.raceId === m.room.raceId
     && m.room.participants.includes(m.you) && !m.room.results.some((r) => r.id === m.you);
@@ -132,6 +201,8 @@ function onCountdown(m: Extract<ServerMessage, { type: 'countdown' }>): void {
     ...(net.room as RoomInfo), phase: 'racing', stage: m.stage, raceId: m.raceId, participants: m.participants, results: [],
   };
   net.raceId = m.raceId;
+  net.room.ready = [];
+  net.following = null;
   setCpus(m.cpus);
   net.cpus.forEach((c) => Object.assign(c, { samples: [], limbs: null, runner: null }));
   net.people.forEach((p) => Object.assign(p, { samples: [] }));
@@ -233,8 +304,16 @@ function handle(m: ServerMessage): void {
       break;
     }
     case 'settings':
-      if (net.room) Object.assign(net.room, { isPublic: m.isPublic, name: m.name });
+      if (net.room) Object.assign(net.room, { isPublic: m.isPublic, name: m.name, nextStage: m.nextStage });
+      syncStageSelect();
       refreshLobby();
+      break;
+    case 'ready':
+      if (net.room) net.room.ready = m.ids;
+      refreshLobby();
+      break;
+    case 'emote':
+      showEmote(m.id, m.e);
       break;
     case 'cpus':
       setCpus(m.cpus);
@@ -250,6 +329,13 @@ function handle(m: ServerMessage): void {
     default:
       break;
   }
+}
+
+/** The host's course picker shows the room's next course. */
+function syncStageSelect(): void {
+  const select = byId<HTMLSelectElement>('stage-select');
+  const value = String(net.room?.nextStage ?? 0);
+  if ([...select.options].some((o) => o.value === value)) select.value = value;
 }
 
 function setRestartButton(online: boolean): void {
@@ -292,6 +378,8 @@ function leave(): void {
   net.people.clear();
   net.cpus.clear();
   net.racingIn = false;
+  net.following = null;
+  net.emotes.clear();
   cancelAnimationFrame(net.idleRaf);
   state.mode = 'solo';
   window.history.replaceState(null, '', window.location.pathname);
@@ -341,15 +429,21 @@ function installHooks(): void {
     startIdleLoop();
     refreshLobby();
   };
-  const racing = () => (net.conn && net.room?.phase === 'racing'
-    ? visibleRacers([...net.people.values(), ...net.cpus.values()])
-    : []);
-  // Watching: the camera follows whoever is in front.
-  hooks.focus = () => racing().reduce<{ x: number; y: number } | null>(
-    (best, { pose }) => (!best || pose.x > best.x ? pose : best),
-    null,
-  );
-  hooks.drawWorld = (ctx) => drawRacers(ctx, racing());
+  // Watching: the camera follows the racer you picked, or whoever is in front.
+  hooks.focus = () => {
+    const others = racing();
+    const followed = others.find(({ racer }) => racer.id === net.following);
+    if (followed) return followed.pose;
+    return others.reduce<{ x: number; y: number } | null>(
+      (best, { pose }) => (!best || pose.x > best.x ? pose : best),
+      null,
+    );
+  };
+  hooks.drawWorld = (ctx) => {
+    drawRacers(ctx, racing(), emoteOf);
+    const mine = net.you ? emoteOf(net.you) : null;
+    if (mine && state.player) drawBubble(ctx, labelSpot(state.player), mine);
+  };
   hooks.onHud = (progress, startX, span) => {
     const at = (x: number) => `${Math.max(0, Math.min(1, (x - startX) / span)) * 100}%`;
     updateDots(progress, racing(), at);
@@ -386,6 +480,31 @@ function bindLobbyButtons(): void {
     const stage = Number.isInteger(testStage) ? testStage : Number(byId<HTMLSelectElement>('stage-select').value);
     send({ type: 'start', stage });
     (e.currentTarget as HTMLButtonElement).disabled = true;
+  });
+  byId<HTMLSelectElement>('stage-select').addEventListener('change', (e) => {
+    const nextStage = Number((e.currentTarget as HTMLSelectElement).value);
+    if (isHost()) send({ type: 'settings', nextStage });
+  });
+  byId('ready-btn').addEventListener('click', () => {
+    if (!net.room || !net.you || net.room.phase !== 'lobby') return;
+    send({ type: 'ready', ready: !net.room.ready.includes(net.you) });
+  });
+  byId('follow-btn').addEventListener('click', followNext);
+  const bar = byId('emote-bar');
+  EMOTES.forEach((text, e) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = text;
+    button.setAttribute('aria-label', `Send ${text}`);
+    button.addEventListener('click', () => {
+      // The room drops emotes sent faster than this, so don't show them either.
+      const now = performance.now();
+      if (!net.you || now - net.lastEmote < EMOTE_GAP_MS) return;
+      net.lastEmote = now;
+      send({ type: 'emote', e });
+      showEmote(net.you, e);
+    });
+    bar.append(button);
   });
   byId('add-cpu').addEventListener('click', () => {
     const difficulty = byId<HTMLSelectElement>('cpu-difficulty').value as 'easy' | 'normal' | 'hard';

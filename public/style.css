@@ -194,7 +194,16 @@ button:disabled { opacity: .5; cursor: default; }
 #cpu-difficulty { font: inherit; padding: 5px 8px; border: 2px solid #c9cdd6; border-radius: 10px; background: #fff; color: var(--ink); }
 #add-cpu { padding: 5px 12px; font-size: 13px; }
 .remove-cpu { margin-left: 4px; padding: 0 8px; font-size: 13px; line-height: 20px; border-color: #c9cdd6; color: var(--muted); }
-#lobby.compact .room-meta, #lobby.compact #cpu-controls { display: none; }
+#lobby.compact .room-meta, #lobby.compact #cpu-controls, #lobby.compact #ready-row { display: none; }
+#ready-row { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
+#ready-row[hidden] { display: none; }
+#ready-btn { margin-left: auto; }
+#ready-btn.on { background: #2fa36b; border-color: #1d6b3c; color: #fff; }
+#follow-btn { padding: 5px 12px; font-size: 13px; align-self: flex-start; }
+#follow-btn[hidden] { display: none; }
+#emote-bar { display: flex; gap: 6px; flex-wrap: wrap; }
+#emote-bar button { padding: 2px 8px; font-size: 18px; line-height: 26px; border-color: #c9cdd6; }
+.tag.ready { color: #1d6b3c; }
 
 /* ---------- Options, leaderboard, ghost ---------- */
 #menu-btn {

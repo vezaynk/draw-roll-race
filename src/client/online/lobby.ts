@@ -22,6 +22,8 @@ export interface LobbyView {
   youDrew: boolean;
   people: LobbyRacer[];
   cpus: LobbyRacer[];
+  /** Name of the course the next race uses. */
+  nextCourse: string;
   onRemoveCpu: (id: string) => void;
 }
 
@@ -61,10 +63,15 @@ function racerRow(
 
 function renderRacers(v: LobbyView, isHost: boolean, racing: boolean): void {
   const hostId = v.room?.hostId;
-  const ready = (drew: boolean) => (drew ? 'ready to roll' : 'no limbs yet');
+  const readyIds = v.room?.ready ?? [];
+  const drawn = (drew: boolean) => (drew ? 'ready to roll' : 'no limbs yet');
+  const tags = (id: string | null) => [
+    ...(id === hostId ? [tag('host')] : []),
+    ...(id && readyIds.includes(id) && !racing ? [el('span', 'tag ready', 'ready')] : []),
+  ];
   const rows = [
-    racerRow(COLORS.player, v.yourName || 'You', [tag('you'), ...(hostId === v.you ? [tag('host')] : [])], ready(v.youDrew)),
-    ...v.people.map((p) => racerRow(p.color, p.name, p.id === hostId ? [tag('host')] : [], ready(hasLimbs(p.limbs)))),
+    racerRow(COLORS.player, v.yourName || 'You', [tag('you'), ...tags(v.you)], drawn(v.youDrew)),
+    ...v.people.map((p) => racerRow(p.color, p.name, tags(p.id), drawn(hasLimbs(p.limbs)))),
     ...v.cpus.map((c) => {
       let remove: HTMLElement | null = null;
       if (isHost && !racing) {
@@ -130,9 +137,22 @@ export function renderLobby(v: LobbyView): void {
   addCpu.title = full ? 'The room is full' : '';
   byId('visibility-btn').textContent = room?.isPublic ? 'Make private' : 'Make public';
   byId<HTMLButtonElement>('start-btn').disabled = racing;
+
+  // Ready-up: when every person here is ready, the next race starts by itself.
+  const people = 1 + v.people.length;
+  const readyCount = room?.ready.length ?? 0;
+  const youReady = !!v.you && !!room?.ready.includes(v.you);
+  byId('ready-row').hidden = racing;
+  byId('next-course').textContent = `Next: ${v.nextCourse}`;
+  const readyBtn = byId('ready-btn');
+  readyBtn.textContent = youReady ? 'Ready ✓' : 'I’m ready';
+  readyBtn.classList.toggle('on', youReady);
+  readyBtn.setAttribute('aria-pressed', String(youReady));
+
   if (!racing && !statusIsWarning) {
-    if (!isHost) setStatus('Draw your runner. The host starts the race.');
-    else if (racers > 1) setStatus('Draw your runner, pick a course and start when everyone is here.');
+    if (readyCount && people > 1) setStatus(`${readyCount} of ${people} ready. The race starts when everyone is.`);
+    else if (!isHost) setStatus('Draw your runner and tap “I’m ready”. The host can also start the race.');
+    else if (racers > 1) setStatus('Draw your runner, pick a course, then start or wait until everyone is ready.');
     else setStatus('Invite friends with the link, or add CPUs to fill the open slots.');
   }
 }

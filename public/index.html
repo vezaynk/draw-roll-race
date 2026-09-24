@@ -142,6 +142,7 @@
       <input id="my-name" type="text" maxlength="16" autocomplete="nickname" spellcheck="false">
     </div>
     <ul id="player-list" aria-label="Racers"></ul>
+    <button id="follow-btn" type="button" hidden></button>
     <div id="cpu-controls" hidden>
       <label for="cpu-difficulty">CPU</label>
       <select id="cpu-difficulty">
@@ -162,10 +163,16 @@
         <option value="1">Stage 2</option>
         <option value="2">Stage 3</option>
         <option value="-1">Random course</option>
+        <option value="-2">Same course again</option>
       </select>
       <button id="visibility-btn" type="button" class="quiet"></button>
       <button id="start-btn" type="button" class="primary">Start race</button>
     </div>
+    <div id="ready-row">
+      <span id="next-course"></span>
+      <button id="ready-btn" type="button">I’m ready</button>
+    </div>
+    <div id="emote-bar" role="group" aria-label="Send a reaction"></div>
     <button id="leave-btn" type="button" class="quiet">Leave room</button>
   </div>
 </div>

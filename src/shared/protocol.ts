@@ -11,6 +11,13 @@ export const MAX_RACERS = 8;
 export const CODE_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
 export const CODE_RE = /^[A-HJKMNP-Z2-9]{5}$/;
 
+/** Quick reactions anyone in a room can send. */
+export const EMOTES = ['👋', '😂', '😮', '🔥', '👏', '😭'] as const;
+
+/** Course choices besides a stage number: a new random course, or the last course again. */
+export const RANDOM_COURSE = -1;
+export const SAME_COURSE = -2;
+
 export interface PlayerInfo {
   id: string;
   name: string;
@@ -52,6 +59,10 @@ export interface RoomInfo {
   results: RaceResult[];
   lastResults: RaceResult[];
   cpus: RoomCpu[];
+  /** People who are ready for the next race; when everyone is, it starts. */
+  ready: string[];
+  /** The course the next race uses (a stage, RANDOM_COURSE or SAME_COURSE). */
+  nextStage: number;
 }
 
 /** An entry in the public room list. */
@@ -71,7 +82,9 @@ export type ClientMessage =
   | { type: 'state'; r: number; x: number; y: number; a: number; b: number }
   | { type: 'limbs'; limbs: EncodedLimbs; lost?: LimbKind[] }
   | { type: 'name'; name: string }
-  | { type: 'settings'; isPublic?: boolean; name?: string }
+  | { type: 'settings'; isPublic?: boolean; name?: string; nextStage?: number }
+  | { type: 'ready'; ready: boolean }
+  | { type: 'emote'; e: number }
   | { type: 'addCpu'; difficulty: Difficulty }
   | { type: 'removeCpu'; id: string }
   | { type: 'start'; stage: number }
@@ -86,7 +99,9 @@ export type ServerMessage =
   | { type: 'join'; player: PlayerInfo; resumed: boolean }
   | { type: 'leave'; id: string; hostId: string | null }
   | { type: 'name'; id: string; name: string }
-  | { type: 'settings'; isPublic: boolean; name: string }
+  | { type: 'settings'; isPublic: boolean; name: string; nextStage: number }
+  | { type: 'ready'; ids: string[] }
+  | { type: 'emote'; id: string; e: number }
   | { type: 'cpus'; cpus: RoomCpu[] }
   | { type: 'limbs'; id: string; limbs: EncodedLimbs; pose?: Pose; lost?: LimbKind[] }
   | {

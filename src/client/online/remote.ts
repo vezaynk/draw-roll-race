@@ -5,7 +5,9 @@ import { POSES } from '../../shared/poses';
 import type { EncodedLimbs, Point, Runner } from '../../shared/types';
 import { createRunner } from '../../shared/runner';
 import { el } from '../dom';
-import { drawLabels, drawRunner, labelSpot } from '../render/draw';
+import {
+  drawBubble, drawLabels, drawRunner, labelSpot,
+} from '../render/draw';
 
 const RENDER_DELAY_MS = 120;
 const MAX_SAMPLES = 40;
@@ -100,13 +102,22 @@ export function visibleRacers(racers: Iterable<RemoteRacer>): Visible[] {
     .filter((v): v is Visible => v.pose !== null);
 }
 
-export function drawRacers(g: CanvasRenderingContext2D, visible: Visible[]): void {
+/** Draws racers with their names, and a bubble over anyone who just sent an emote. */
+export function drawRacers(
+  g: CanvasRenderingContext2D,
+  visible: Visible[],
+  emoteOf: (id: string) => string | null,
+): void {
   const labels = visible.map(({ racer, pose }) => {
     const runner = posedRunner(racer, pose);
     drawRunner(g, runner, 0.8);
     return { text: racer.name, color: racer.color, ...labelSpot(runner) };
   });
   drawLabels(g, labels);
+  visible.forEach(({ racer }, i) => {
+    const emote = emoteOf(racer.id);
+    if (emote) drawBubble(g, labels[i], emote);
+  });
 }
 
 const dots = new Map<string, HTMLElement>();

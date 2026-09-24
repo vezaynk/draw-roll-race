@@ -9,7 +9,9 @@ import {
 } from '../shared/course/stages';
 import { isDifficulty } from '../shared/cpu/personality';
 import { sanitizeLimbs } from '../shared/limbs';
-import { MAX_RACERS } from '../shared/protocol';
+import {
+  EMOTES, MAX_RACERS, RANDOM_COURSE, SAME_COURSE,
+} from '../shared/protocol';
 import type {
   PlayerInfo, RaceResult, RoomInfo, ServerMessage,
 } from '../shared/protocol';
@@ -34,6 +36,8 @@ const REJOIN_MS = 60 * 1000;
 const MAX_MESSAGE = 8 * 1024;
 /** Position messages per second per sender. */
 const STATE_RATE = 40;
+/** Shortest gap between one person's emotes. */
+const EMOTE_GAP_MS = 700;
 /** Everyone sees themselves in red, so nobody else is ever red. */
 const COLORS = ['#3a7bd5', '#2fa36b', '#c9892b', '#9a5bd6', '#e0508f', '#1f9fb0', '#7a8a2e', '#5b6472'];
 const CPU_NAMES = ['Bolt', 'Wobble', 'Spoke', 'Zippy', 'Noodle', 'Gizmo', 'Pogo', 'Rusty', 'Dash',
@@ -66,6 +70,9 @@ export class RaceRoom extends DurableObject<Env> {
 
   /** Sender → { windowStart, count } for rate limiting. */
   private readonly rate = new Map<string, { windowStart: number; count: number }>();
+
+  /** Player id → when they last sent an emote. */
+  private readonly lastEmote = new Map<string, number>();
 
   /** Player id → last position they reported this race. */
   private readonly positions = new Map<string, { x: number; t: number }>();
@@ -270,8 +277,11 @@ export class RaceRoom extends DurableObject<Env> {
       if (typeof msg.isPublic === 'boolean') room.isPublic = msg.isPublic;
       const name = moderateName(cleanText(msg.name, 24), null);
       if (name) room.name = name;
+      if (Number.isInteger(msg.nextStage)) room.nextStage = Number(msg.nextStage);
       this.save();
-      this.broadcast({ type: 'settings', isPublic: room.isPublic, name: room.name });
+      this.broadcast({
+        type: 'settings', isPublic: room.isPublic, name: room.name, nextStage: room.nextStage,
+      });
       await this.publish();
     },
 
@@ -306,31 +316,27 @@ export class RaceRoom extends DurableObject<Env> {
     },
 
     start: async (_ws, me, msg) => {
+      if (me.id !== this.room.hostId || this.room.phase !== 'lobby') return;
+      await this.startRace(msg.stage);
+    },
+
+    ready: async (_ws, me, msg) => {
       const { room } = this;
-      if (me.id !== room.hostId || room.phase !== 'lobby') return;
-      room.stage = this.pickStage(msg.stage);
-      const people = this.people();
-      this.trimCpus(people.length);
-      room.phase = 'racing';
-      room.raceId += 1;
-      room.startsAt = Date.now() + COUNTDOWN_MS;
-      room.results = [];
-      room.graceUntil = 0;
-      room.participants = people.map((s) => info(s)?.id ?? '').filter(Boolean)
-        .concat(room.cpus.map((c) => c.id));
+      if (room.phase !== 'lobby') return;
+      const others = room.ready.filter((id) => id !== me.id);
+      room.ready = msg.ready === true ? [...others, me.id] : others;
       this.save();
-      await this.ctx.storage.setAlarm(room.startsAt + RACE_LIMIT_MS);
-      this.positions.clear();
-      this.startCpus();
-      this.broadcast({
-        type: 'countdown',
-        raceId: room.raceId,
-        stage: room.stage,
-        ms: COUNTDOWN_MS,
-        participants: room.participants,
-        cpus: room.cpus,
-      });
-      await this.publish();
+      this.broadcast({ type: 'ready', ids: room.ready });
+      await this.startIfAllReady();
+    },
+
+    emote: (ws, me, msg) => {
+      const e = Number(msg.e);
+      const now = Date.now();
+      if (!Number.isInteger(e) || e < 0 || e >= EMOTES.length) return;
+      if (now - (this.lastEmote.get(me.id) ?? 0) < EMOTE_GAP_MS) return;
+      this.lastEmote.set(me.id, now);
+      this.broadcast({ type: 'emote', id: me.id, e }, ws);
     },
 
     finish: async (ws, me, msg) => {
@@ -363,6 +369,7 @@ export class RaceRoom extends DurableObject<Env> {
       // already closed
     }
     this.rate.delete(me.id);
+    this.lastEmote.delete(me.id);
     const rest = this.people().filter((s) => s !== ws);
     if (!rest.length) {
       await this.closeRoom();
@@ -383,10 +390,14 @@ export class RaceRoom extends DurableObject<Env> {
         .sort((a, b) => a.joinedAt - b.joinedAt);
       this.room.hostId = longest.id;
     }
+    const wasReady = this.room.ready.includes(me.id);
+    this.room.ready = this.room.ready.filter((id) => id !== me.id);
     this.save();
     this.broadcast({ type: 'leave', id: me.id, hostId: this.room.hostId }, ws);
+    if (wasReady) this.broadcast({ type: 'ready', ids: this.room.ready }, ws);
     await this.publish(ws);
     await this.maybeEndRace(ws);
+    await this.startIfAllReady(ws);
   }
 
   /** The last person left: forget everything and leave the directory. */
@@ -409,10 +420,50 @@ export class RaceRoom extends DurableObject<Env> {
 
   private pickStage(asked: unknown): number {
     const stage = Number.isInteger(asked) ? Number(asked) : 0;
-    if (stage < 0) return RANDOM_BASE + (randomInt() % 1000000);
+    if (stage === SAME_COURSE) return this.room.raceId > 0 ? this.room.stage : 0;
+    if (stage === RANDOM_COURSE || stage < 0) return RANDOM_BASE + (randomInt() % 1000000);
     if (isTestStage(stage)) return this.env.ALLOW_TEST_STAGES === '1' ? stage : 0;
     if (stage >= STAGES.length && stage < RANDOM_BASE) return 0;
     return stage;
+  }
+
+  /** Counts down to a race on the asked course, with everyone here. */
+  private async startRace(asked: unknown): Promise<void> {
+    const { room } = this;
+    room.stage = this.pickStage(asked);
+    const people = this.people();
+    this.trimCpus(people.length);
+    room.phase = 'racing';
+    room.raceId += 1;
+    room.startsAt = Date.now() + COUNTDOWN_MS;
+    room.results = [];
+    room.graceUntil = 0;
+    room.ready = [];
+    room.participants = people.map((s) => info(s)?.id ?? '').filter(Boolean)
+      .concat(room.cpus.map((c) => c.id));
+    this.save();
+    await this.ctx.storage.setAlarm(room.startsAt + RACE_LIMIT_MS);
+    this.positions.clear();
+    this.startCpus();
+    this.broadcast({
+      type: 'countdown',
+      raceId: room.raceId,
+      stage: room.stage,
+      ms: COUNTDOWN_MS,
+      participants: room.participants,
+      cpus: room.cpus,
+    });
+    await this.publish();
+  }
+
+  /** Everyone in the lobby said they are ready: start the next race on the host's course. */
+  private async startIfAllReady(gone?: WebSocket): Promise<void> {
+    const { room } = this;
+    if (room.phase !== 'lobby' || !room.ready.length) return;
+    const here = this.people().filter((s) => s !== gone).map((s) => info(s)?.id);
+    if (here.length && here.every((id) => id && room.ready.includes(id))) {
+      await this.startRace(room.nextStage);
+    }
   }
 
   private startCpus(): void {
@@ -584,9 +635,11 @@ export class RaceRoom extends DurableObject<Env> {
   private publicRoom(): RoomInfo {
     const {
       code, name, isPublic, phase, stage, raceId, hostId, participants, results, lastResults, cpus,
+      ready, nextStage,
     } = this.room;
     return {
       code, name, isPublic, phase, stage, raceId, hostId, participants, results, lastResults, cpus,
+      ready, nextStage,
     };
   }
 

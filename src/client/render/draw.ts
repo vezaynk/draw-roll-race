@@ -81,3 +81,25 @@ export function drawLabels(g: CanvasRenderingContext2D, labels: Label[]): void {
   });
   g.restore();
 }
+
+/** A speech bubble with an emote, above a runner's name label. */
+export function drawBubble(g: CanvasRenderingContext2D, at: Point, text: string): void {
+  const x = at.x;
+  const y = at.y - 26;
+  g.save();
+  g.fillStyle = '#fff';
+  g.strokeStyle = COLORS.ink;
+  g.lineWidth = 2;
+  g.beginPath();
+  g.roundRect(x - 15, y - 15, 30, 26, 9);
+  g.moveTo(x - 4, y + 11);
+  g.lineTo(x, y + 17);
+  g.lineTo(x + 4, y + 11);
+  g.fill();
+  g.stroke();
+  g.font = '17px system-ui, sans-serif';
+  g.textAlign = 'center';
+  g.textBaseline = 'middle';
+  g.fillText(text, x, y - 1);
+  g.restore();
+}
