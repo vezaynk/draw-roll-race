@@ -1,10 +1,8 @@
 // Boots the game.
 import buildCourse from '../shared/course/build';
-import { TUTORIAL } from '../shared/course/stages';
 import { RunReplay } from '../shared/replay';
-import TIPS from '../shared/course/tips';
-import initControls from './controls';
-import { buildProgress, showHint, updateHud } from './hud';
+import initControls, { enterDaily } from './controls';
+import { buildProgress, updateHud } from './hud';
 import initOnline from './online';
 import initOptions from './options';
 import { initPad } from './pad';
@@ -12,6 +10,7 @@ import { onLimbsDrawn, resetStage } from './race';
 import { initScene } from './render/scene';
 import { initSound } from './sound';
 import { state } from './state';
+import { firstVisit } from './storage';
 
 declare global {
   interface Window {
@@ -21,9 +20,11 @@ declare global {
 }
 
 function boot(): void {
-  // ?stage=N opens a stage directly (handy for testing a course).
+  // ?stage=N opens a stage directly (handy for testing a course); otherwise the daily course is
+  // ready to race.
   const asked = Number.parseInt(new URLSearchParams(window.location.search).get('stage') ?? '', 10);
-  if (Number.isInteger(asked) && asked >= 0) state.stage = asked;
+  const direct = Number.isInteger(asked) && asked >= 0;
+  if (direct) state.stage = asked;
 
   initScene();
   initPad(onLimbsDrawn);
@@ -33,7 +34,7 @@ function boot(): void {
   resetStage();
   buildProgress();
   updateHud();
-  if (state.stage === TUTORIAL) showHint(`Welcome! ${TIPS.bumps}`, 0);
+  if (!direct) enterDaily(firstVisit ? 'Welcome! New here? Try the Tutorial first. ' : '');
   initOnline();
   window.drr = { state, buildCourse, RunReplay };
 }

@@ -36,13 +36,16 @@ npm test           # type check, unit tests, CPU course simulation, browser test
   carries you across. `npx tsx tools/blocks.ts` compares arm shapes.
 - **Spikes** shatter any limb that touches them. Draw a new one: a fresh limb
   is safe from spikes for a second, so you can climb back out.
-- New players start with a **tutorial** that shows a tip before each obstacle.
-  Elsewhere, a tip appears the first time you meet each obstacle.
+- The game opens on today's **daily course**, ready to race. The **tutorial**
+  shows a tip before each obstacle (new players are pointed to it); elsewhere,
+  a tip appears the first time you meet each obstacle.
 - There are three fixed stages. After the last one, Endless mode generates new
   courses that get longer and harder.
 - Before a race, buttons above the drawing pad open the **Daily course**, the
   **Tutorial** and **Play with friends** (online rooms). Tap the stage name to
-  switch between the tutorial and the stages you have unlocked.
+  switch between the tutorial and the stages you have unlocked. Until a race
+  starts, the selected course's name is shown large, with "Draw a limb to
+  start" under it.
 - **Exit** stops the race and goes back to the start screen.
 
 The **Daily course** is the same generated course for everyone each day (UTC),

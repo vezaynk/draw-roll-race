@@ -62,6 +62,9 @@ export function updateControls(): void {
   button.classList.toggle('switchable', can);
   byId('start-menu').hidden = !atStart();
   byId('exit-btn').hidden = atStart();
+  // The course that's selected, until a race starts.
+  byId('mode-title').hidden = !atStart();
+  byId('mode-name').textContent = stageName(state.stage);
 }
 
 interface Dots {
