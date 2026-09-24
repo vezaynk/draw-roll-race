@@ -1,10 +1,10 @@
 // Headless check that CPUs of every difficulty can finish every kind of course: the fixed
-// stages, the tutorial, today's daily course, Endless stages and random courses.
+// stages, the tutorial, the test courses, today's daily course, Endless stages and random courses.
 // Usage: npm run sim -- [endless=25] [random=25] [cpusPerDifficulty=3]
 import { CFG } from '../src/shared/config';
 import buildCourse from '../src/shared/course/build';
 import {
-  RANDOM_BASE, STAGES, TUTORIAL, dailyStage, stageSections, today,
+  RANDOM_BASE, STAGES, TEST_STAGES, TUTORIAL, dailyStage, stageSections, today,
 } from '../src/shared/course/stages';
 import { DIFFICULTIES } from '../src/shared/cpu/personality';
 import type { Difficulty } from '../src/shared/cpu/personality';
@@ -32,6 +32,7 @@ const [endless = 25, random = 25, perDifficulty = 3] = process.argv.slice(2).map
 const stages = [
   ...STAGES.map((_, i) => i),
   TUTORIAL,
+  ...Object.keys(TEST_STAGES).map(Number),
   dailyStage(today()),
   ...Array.from({ length: endless }, (_, i) => STAGES.length + i),
   ...Array.from({ length: random }, (_, i) => RANDOM_BASE + 7919 * i + 13),

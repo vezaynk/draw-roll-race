@@ -3,7 +3,7 @@
 import { CFG } from '../config';
 import { cos, sin } from '../fmath';
 import type {
-  Course, CourseSection, Fluid, PlanStep, SectionParams, SectionType, Surface, Zone,
+  Block, Course, CourseSection, Fluid, PlanStep, SectionParams, SectionType, Surface, Zone,
 } from '../types';
 import { SECTIONS } from './sections';
 import { stageSections } from './stages';
@@ -31,6 +31,8 @@ class TerrainWriter {
   readonly surfs: (Surface | null)[] = [];
 
   readonly zones: (Zone | null)[] = [];
+
+  readonly blocks: Block[] = [];
 
   /** Appends `len` world units; f(t) gives the ground height at local offset t. */
   seg(len: number, f: HeightFn, ceiling?: HeightFn): void {
@@ -206,6 +208,25 @@ const BUILDERS: Record<SectionType, Builder> = {
     writer.seg(p.len, (t) => y0 + p.dh * bump(t, p.len));
     writer.zone = null;
   },
+  // A spike pit too wide to vault, with a row of floating blocks above it.
+  blocks(writer, p) {
+    const y0 = writer.y;
+    writer.flat(60);
+    writer.seg(10, (t) => y0 + (p.d * t) / 10);
+    const pitX = writer.x;
+    writer.surf = { spikes: true };
+    writer.seg(p.w, () => y0 + p.d);
+    writer.surf = null;
+    writer.seg(10, (t) => y0 + p.d * (1 - t / 10));
+    writer.flat(60);
+    const row = p.n * p.bw + (p.n - 1) * p.gap;
+    for (let k = 0; k < p.n; k += 1) {
+      const x0 = pitX + (p.w - row) / 2 + k * (p.bw + p.gap);
+      writer.blocks.push({
+        x0, x1: x0 + p.bw, y0: y0 - p.h - p.th, y1: y0 - p.h,
+      });
+    }
+  },
   bounce(writer, p) {
     const y0 = writer.y;
     writer.surf = { bounce: CFG.BOUNCE };
@@ -254,6 +275,7 @@ export default function buildCourse(stage: number): Course {
     fluid: w.fluids,
     surf: w.surfs,
     zone: w.zones,
+    blocks: w.blocks,
     sections,
     plan,
     finishX,

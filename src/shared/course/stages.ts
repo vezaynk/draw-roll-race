@@ -2,7 +2,7 @@
 // generated from a seed (Endless mode, online "Random course", the daily course).
 import { hashSeed, rng } from '../random';
 import type { SectionParams, SectionType } from '../types';
-import { SECTIONS, SECTION_TYPES, needsShapeChange } from './sections';
+import { GENERATED_TYPES, SECTIONS, needsShapeChange } from './sections';
 
 export const STAGES: readonly (readonly SectionType[])[] = [
   ['rolling', 'bumps', 'stairs', 'swell', 'trenches', 'conveyor', 'ramps', 'rolling'],
@@ -19,6 +19,7 @@ const TUTORIAL_SECTIONS: readonly SectionType[] = ['bumps', 'stairs', 'tunnel', 
 export const TEST_STAGES: Readonly<Record<number, readonly SectionType[]>> = {
   990: ['bumps'],
   991: ['spikepit', 'spikeroof', 'wind', 'lowgrav', 'bounce'],
+  992: ['blocks'],
 };
 
 /** Stage numbers from here up are single generated courses. */
@@ -60,7 +61,7 @@ function generatedSections(n: number): StageSection[] {
   const out: StageSection[] = [];
   let specials = 0;
   while (out.length < count) {
-    const type = SECTION_TYPES[Math.floor(rand() * SECTION_TYPES.length)];
+    const type = GENERATED_TYPES[Math.floor(rand() * GENERATED_TYPES.length)];
     const prev = out[out.length - 1];
     const special = needsShapeChange(type);
     // No repeats in a row, and at least a third of the course stays rollable.

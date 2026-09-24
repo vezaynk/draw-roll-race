@@ -179,13 +179,35 @@ const PAINTERS: Partial<Record<CourseSection['type'], SectionPainter>> = {
       g.stroke();
     }
   },
+  blocks(g, course, s) {
+    const [a, b] = sampleRun(course, s.from, (i) => !!course.surf[i]?.spikes);
+    spikeRow(g, a, b, (x) => groundAt(course, x), -1);
+  },
   tunnel: paintCeiling,
   crawl: paintCeiling,
   spikeroof: paintCeiling,
 };
 
+/** Floating blocks: ground-coloured slabs with an ink outline and a light top edge. */
+function drawBlocks(g: CanvasRenderingContext2D, course: Course, v: View): void {
+  course.blocks.filter((b) => b.x1 >= v.x0 && b.x0 <= v.x1).forEach((b) => {
+    const w = b.x1 - b.x0;
+    const h = b.y1 - b.y0;
+    g.fillStyle = COLORS.ground;
+    g.strokeStyle = COLORS.ink;
+    g.lineWidth = 2.5;
+    g.beginPath();
+    g.roundRect(b.x0, b.y0, w, h, 3);
+    g.fill();
+    g.stroke();
+    g.fillStyle = '#f2c14e';
+    g.fillRect(b.x0 + 3, b.y0 + 2, w - 6, 3);
+  });
+}
+
 export function drawObstacles(g: CanvasRenderingContext2D, course: Course, v: View): void {
   course.sections.filter((s) => visible(s, v)).forEach((s) => PAINTERS[s.type]?.(g, course, s, v));
+  drawBlocks(g, course, v);
 }
 
 export function drawPosts(g: CanvasRenderingContext2D, course: Course): void {

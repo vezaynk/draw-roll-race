@@ -165,9 +165,27 @@ export const SECTIONS: Record<SectionType, SectionSpec> = {
     def: { len: 420, amp: 10 },
     gen: (r, L) => ({ len: randInt(r, 300, 360 + 120 * L), amp: randInt(r, 6, 8 + 6 * L) }),
   },
+  // Nothing special about the blocks: an arm long enough (or hooked) to reach them catches their
+  // edges and hauls the runner along, block to block.
+  blocks: {
+    label: 'Hanging Blocks',
+    pose: 'climber',
+    def: {
+      w: 300, d: 100, n: 4, bw: 36, gap: 40, h: 70, th: 18,
+    },
+    gen: (r) => ({
+      w: randInt(r, 260, 320), d: 100, n: 4, bw: 36, gap: randInt(r, 34, 44), h: randInt(r, 64, 76), th: 18,
+    }),
+  },
 };
 
 export const SECTION_TYPES = Object.keys(SECTIONS) as SectionType[];
+
+/**
+ * Obstacles random courses pick from. Newer obstacles are left out until they are released, so
+ * existing random, Endless and daily courses stay exactly as they were.
+ */
+export const GENERATED_TYPES = SECTION_TYPES.filter((t) => t !== 'blocks');
 
 /** Sections where the right shape matters (marked on the progress bar). */
 export function needsShapeChange(type: SectionType): boolean {
