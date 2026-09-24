@@ -51,3 +51,10 @@ test('test stages are only the reserved numbers', () => {
   assert.equal(isTestStage(0), false);
   assert.equal(isTestStage(RANDOM_BASE), false);
 });
+
+test('hanging blocks exist only where a course asks for them', () => {
+  assert.equal(buildCourse(992).blocks.length, 4);
+  [0, 1, 2, TUTORIAL, RANDOM_BASE + 5, dailyStage('2026-01-01')].forEach((stage) => {
+    assert.equal(buildCourse(stage).blocks.length, 0, `stage ${stage}`);
+  });
+});

@@ -27,6 +27,7 @@ const TIPS: Record<SectionType, string> = {
   wind: 'Headwind: a big wheel pushes through.',
   lowgrav: 'Low gravity: you float, so keep rolling.',
   bounce: 'Bounce pads: hold on, you will bounce.',
+  blocks: 'Hanging blocks over spikes: an arm with a hook can swing you across.',
 };
 
 export default TIPS;

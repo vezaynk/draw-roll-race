@@ -7,7 +7,7 @@ import {
 import { nearestOnHeights } from './geometry';
 import { forEachPoint } from './runner';
 import type {
-  Course, Joint, Runner, Surface,
+  Block, Course, Joint, Runner, Surface,
 } from './types';
 
 interface Contact {
@@ -85,6 +85,44 @@ function contactWith(
   };
 }
 
+/**
+ * Contact of a point with a floating block: pushed out of the nearest face, or away from the
+ * nearest edge or corner. Nothing about blocks is special beyond this: whatever a limb's shape
+ * catches on, it catches on.
+ */
+function contactWithBlock(b: Block, px: number, py: number): Contact | null {
+  const { R } = CFG;
+  const qx = Math.max(b.x0, Math.min(b.x1, px));
+  const qy = Math.max(b.y0, Math.min(b.y1, py));
+  const dx = px - qx;
+  const dy = py - qy;
+  const d2 = dx * dx + dy * dy;
+  if (d2 >= R * R) return null;
+  if (d2 > 1e-12) {
+    const d = Math.sqrt(d2);
+    return {
+      px, py, nx: dx / d, ny: dy / d, pen: R - d,
+    };
+  }
+  // The point's centre is inside: leave through the nearest face.
+  const faces: [number, number, number][] = [
+    [px - b.x0, -1, 0], [b.x1 - px, 1, 0], [py - b.y0, 0, -1], [b.y1 - py, 0, 1],
+  ];
+  const [depth, nx, ny] = faces.reduce((best, f) => (f[0] < best[0] ? f : best));
+  return {
+    px, py, nx, ny, pen: depth + R,
+  };
+}
+
+function collideBlocks(course: Course, body: Runner, px: number, py: number, joint: Joint | null): void {
+  const { R } = CFG;
+  course.blocks.forEach((b) => {
+    if (px + R <= b.x0 || px - R >= b.x1 || py + R <= b.y0 || py - R >= b.y1) return;
+    const c = contactWithBlock(b, px, py);
+    if (c) applyImpulse(body, joint, c, null);
+  });
+}
+
 function collide(course: Course, body: Runner, px: number, py: number, joint: Joint | null): void {
   const { R, SPIKE_H } = CFG;
   // Ceilings (tunnels). The ceiling polyline jumps far up where there is none, which gives the
@@ -98,6 +136,7 @@ function collide(course: Course, body: Runner, px: number, py: number, joint: Jo
       body.hit[joint.kind] = true;
     }
   }
+  if (course.blocks.length) collideBlocks(course, body, px, py, joint);
   const gy = groundAt(course, px);
   // Floor spikes stick up SPIKE_H above the ground: a limb point that low shatters.
   if (joint && body.immune <= 0 && py + R > gy - SPIKE_H && surfAt(course, px)?.spikes) {

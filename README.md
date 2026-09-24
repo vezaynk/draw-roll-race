@@ -30,6 +30,10 @@ npm test           # type check, unit tests, CPU course simulation, browser test
     pits.
   - Small wheels fit through tunnels.
   - A long arm helps you climb walls, but it shatters on a spiked ceiling.
+- **Hanging blocks** (prototype, test course only: open `?stage=992`) float
+  above a spike pit too wide to vault. They are ordinary solid blocks: an arm
+  long enough to reach them, or hooked at the end, catches their edges and
+  carries you across. `npx tsx tools/blocks.ts` compares arm shapes.
 - **Spikes** shatter any limb that touches them. Draw a new one: a fresh limb
   is safe from spikes for a second, so you can climb back out.
 - New players start with a **tutorial** that shows a tip before each obstacle.

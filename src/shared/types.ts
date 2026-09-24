@@ -27,7 +27,7 @@ export type Pose = 'wheel' | 'mini' | 'stilts' | 'climber';
 export type SectionType =
   | 'rolling' | 'bumps' | 'stairs' | 'trenches' | 'chasm' | 'swell' | 'ramps' | 'tunnel'
   | 'hurdles' | 'drop' | 'incline' | 'pool' | 'ledge' | 'crawl' | 'conveyor' | 'ice' | 'mud'
-  | 'spikepit' | 'spikeroof' | 'wind' | 'lowgrav' | 'bounce';
+  | 'spikepit' | 'spikeroof' | 'wind' | 'lowgrav' | 'bounce' | 'blocks';
 
 /** Sizes of one section (lengths, heights, counts...). */
 export type SectionParams = Record<string, number>;
@@ -57,6 +57,16 @@ export interface Zone {
   roofSpikes?: boolean;
 }
 
+/** A solid block floating in the air (world units; y grows downwards). */
+export interface Block {
+  x0: number;
+  x1: number;
+  /** Top edge. */
+  y0: number;
+  /** Bottom edge. */
+  y1: number;
+}
+
 export interface CourseSection {
   type: SectionType;
   label: string;
@@ -80,6 +90,8 @@ export interface Course {
   fluid: (Fluid | null)[];
   surf: (Surface | null)[];
   zone: (Zone | null)[];
+  /** Floating blocks, left to right. */
+  blocks: Block[];
   sections: CourseSection[];
   plan: PlanStep[];
   finishX: number;
