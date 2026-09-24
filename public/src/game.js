@@ -4,8 +4,12 @@
   const D = window.DRR;
   const { CFG, FIG } = D;
 
-  const SOLO_CPU = 'normal'; // difficulty of the solo CPU (see cpu.js)
   const VIEW_W = 560;       // world units visible across the screen (at most)
+  // Solo CPUs; red is always you.
+  const CPU_COLORS = ['#3a7bd5', '#2fa36b', '#c9892b', '#9a5bd6', '#e0508f', '#1f9fb0', '#7a8a2e'];
+  const GHOST_COLOR = '#8d96a8';
+  const GHOST_KEY = 'draw-roll-race-ghosts';
+  const MAX_GHOSTS = 12;
 
   const $ = id => document.getElementById(id);
   const cssVar = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
@@ -13,21 +17,43 @@
 
   // ---------------- Saved progress (best effort: storage may be unavailable) ----------------
   const SAVE_KEY = 'draw-roll-race';
+  const DEFAULTS = {
+    stage: 0, unlocked: 0, best: {},
+    cpuCount: 1, cpuDifficulty: 'normal', sound: true, vibrate: true, ghost: true, pad: 'normal',
+    seenTips: {}, tutorialDone: false, player: '',
+  };
+  let firstVisit = false;
   const save = (() => {
-    try { return Object.assign({ stage: 0, unlocked: 0, best: {} }, JSON.parse(localStorage.getItem(SAVE_KEY) || '{}')); }
-    catch (e) { return { stage: 0, unlocked: 0, best: {} }; }
+    try {
+      const raw = localStorage.getItem(SAVE_KEY);
+      firstVisit = !raw;
+      return Object.assign({}, DEFAULTS, JSON.parse(raw || '{}'));
+    } catch (e) { return Object.assign({}, DEFAULTS); }
   })();
+  if (!save.player) {
+    // Anonymous id for the daily leaderboard.
+    const bytes = crypto.getRandomValues(new Uint8Array(18));
+    save.player = btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, c => ({ '+': '-', '/': '_', '=': '' }[c]));
+  }
+  // New players start with the tutorial.
+  if (firstVisit) save.stage = D.TUTORIAL;
   function persist() {
     try { localStorage.setItem(SAVE_KEY, JSON.stringify(save)); } catch (e) { /* ignore */ }
   }
+  persist();
 
   // ---------------- State ----------------
   const state = {
     stage: save.stage,
     course: D.buildCourse(save.stage),
     limbs: { arm: [], leg: [] },
-    player: null, cpu: null, cpuDriver: null,
-    cpuTime: null,
+    player: null,
+    cpus: [],              // solo CPU drivers (cpu.js)
+    cpuTime: null,         // when the first CPU finished
+    ghost: null,           // best run on this course, replayed while racing
+    trace: null,           // the run being recorded
+    daily: null,           // { day } while playing the daily course
+    tipsShown: {},
     racing: false, finished: false, time: 0,
     section: null,
     mode: 'solo',          // 'solo' or 'online' (online.js switches it)
@@ -131,7 +157,11 @@
     clearTimeout(hintTimer);
     $('pad-hint').classList.add('hidden');
     if (hooks.onLimbs) hooks.onLimbs(state.limbs);
-    if (state.racing) state.player = D.swapLimbs(state.course, state.player, state.limbs);
+    sfx('swap');
+    if (state.racing) {
+      state.player = D.swapLimbs(state.course, state.player, state.limbs);
+      recordLimbs();
+    }
     else if (state.mode === 'online') {
       // In a room the host starts races; just show the new drawing at the start line.
       state.player = D.createRunner(state.limbs, COLORS.player, 1);
@@ -154,30 +184,56 @@
       z.style.width = ((s.to - s.from) / span * 100) + '%';
       progress.appendChild(z);
     }
-    for (const who of ['cpu', 'player']) {
-      dots[who] = document.createElement('div');
-      dots[who].className = 'dot ' + who;
-      progress.appendChild(dots[who]);
-    }
+    dots.ghost = document.createElement('div');
+    dots.ghost.className = 'dot ghost';
+    progress.appendChild(dots.ghost);
+    dots.cpus = [];
+    dots.player = document.createElement('div');
+    dots.player.className = 'dot player';
+    progress.appendChild(dots.player);
     const flag = document.createElement('span');
     flag.className = 'flag'; flag.textContent = '🏁';
     progress.appendChild(flag);
     $('stage-label').textContent = stageName(state.stage);
     updateStageButton();
   }
-  function stageName(n) { return D.TEST_STAGES[n] ? 'Test course' : n >= D.RANDOM_BASE ? 'Random course' : n < D.STAGES.length ? 'Stage ' + (n + 1) + ' / ' + D.STAGES.length : 'Endless ' + (n - D.STAGES.length + 1); }
+  function stageName(n) {
+    if (state.daily && n === D.dailyStage(state.daily.day)) return 'Daily course';
+    if (n === D.TUTORIAL) return 'Tutorial';
+    return D.TEST_STAGES[n] ? 'Test course' : n >= D.RANDOM_BASE ? 'Random course' : n < D.STAGES.length ? 'Stage ' + (n + 1) + ' / ' + D.STAGES.length : 'Endless ' + (n - D.STAGES.length + 1);
+  }
   function updateHud() {
     const c = state.course, span = c.finishX - c.startX;
-    for (const who of ['cpu', 'player']) {
-      const b = state[who];
-      const t = b ? Math.max(0, Math.min(1, (b.x - c.startX) / span)) : 0;
-      dots[who].style.left = (t * 100) + '%';
-      dots[who].hidden = !b;
+    const at = x => (Math.max(0, Math.min(1, (x - c.startX) / span)) * 100) + '%';
+    dots.player.hidden = !state.player;
+    if (state.player) dots.player.style.left = at(state.player.x);
+    while (dots.cpus.length < state.cpus.length) {
+      const d = document.createElement('div');
+      d.className = 'dot cpu';
+      progress.insertBefore(d, dots.player);
+      dots.cpus.push(d);
     }
+    dots.cpus.forEach((d, i) => {
+      const drv = state.cpus[i];
+      d.hidden = !drv;
+      if (drv) { d.style.background = drv.runner.color; d.style.left = at(drv.runner.x); }
+    });
+    const g = state.racing && ghostAt(state.time);
+    dots.ghost.hidden = !g;
+    if (g) dots.ghost.style.left = at(g.x);
     if (hooks.onHud) hooks.onHud(progress, c.startX, span);
     $('timer').textContent = state.time.toFixed(2) + ' s';
     const px = state.player ? state.player.x : c.startX;
     const sec = c.sections.find(s => px >= s.from && px < s.to) || null;
+    // Tips: always in the tutorial, otherwise the first time you meet each obstacle.
+    if (state.racing && state.mode === 'solo') {
+      const next = c.sections.find(s => s.from > px - 20 && s.from - px < 260);
+      if (next && !state.tipsShown[next.type] && (state.stage === D.TUTORIAL || !save.seenTips[next.type])) {
+        state.tipsShown[next.type] = true;
+        showHint(D.TIPS[next.type], state.stage === D.TUTORIAL ? 6000 : 4500);
+        if (state.stage !== D.TUTORIAL) { save.seenTips[next.type] = true; persist(); }
+      }
+    }
     if (sec !== state.section) {
       state.section = sec;
       $('section-label').textContent = sec ? sec.label : state.cpuTime !== null ? 'CPU finished' : '';
@@ -197,7 +253,7 @@
   function resetStage() {
     state.course = D.buildCourse(state.stage);
     state.countdownEnd = 0;
-    state.player = null; state.cpu = null;
+    state.player = null; state.cpus = [];
     state.racing = false; state.finished = false; state.time = 0; state.cpuTime = null;
     state.section = null;
     buildProgress();
@@ -216,36 +272,41 @@
     const c = state.course;
     state.player = D.createRunner(state.limbs, COLORS.player, 1);
     D.settle(c, state.player, c.startX);
-    state.cpu = null; state.cpuDriver = null;
-    if (opts.cpu !== false) {
-      // A new personality every race, so the CPU never plays the same way twice.
-      state.cpuDriver = D.createCpu(c, {
-        seed: (Math.random() * 1e9) | 0, difficulty: SOLO_CPU, color: COLORS.cpu,
-        onSwap: (limbs, pose, lost, old) => { if (lost && old) spawnShards(old, lost); },
-      });
-      state.cpu = state.cpuDriver.runner;
+    state.cpus = [];
+    if (opts.cpu !== false && state.stage !== D.TUTORIAL) {
+      // New personalities every race, so CPUs never play the same way twice.
+      for (let i = 0; i < save.cpuCount; i++) {
+        const difficulty = save.cpuDifficulty === 'mixed' ? D.CPU_DIFFICULTIES[i % D.CPU_DIFFICULTIES.length] : save.cpuDifficulty;
+        state.cpus.push(D.createCpu(c, {
+          seed: (Math.random() * 1e9) | 0, difficulty, color: CPU_COLORS[i % CPU_COLORS.length],
+          onSwap: (limbs, pose, lost, old) => { if (lost && old) spawnShards(old, lost); },
+        }));
+      }
     }
     state.cpuTime = null;
+    state.tipsShown = {};
+    state.ghost = state.mode === 'solo' && save.ghost ? loadGhost(ghostKey()) : null;
+    state.trace = { samples: [[0, round1(state.player.x), round1(state.player.y), 0, 0]], limbs: [[0, D.encodeLimbs(state.limbs)]], lastT: 0 };
     state.time = 0; state.racing = true; state.finished = false;
     state.countdownEnd = opts.countdownMs ? performance.now() + opts.countdownMs : 0;
     countdownShown = null;
     updateStageButton();
-    if (!state.countdownEnd) toast('GO!', 700);
+    if (!state.countdownEnd) { toast('GO!', 700); sfx('go'); }
     lastTs = 0; acc = 0;
     cancelAnimationFrame(rafId);
     rafId = requestAnimationFrame(frame);
   }
 
-  function stepCpu() {
-    const drv = state.cpuDriver;
-    if (!drv || state.cpuTime !== null) return;
-    drv.step(CFG.DT, state.time);
-    state.cpu = drv.runner;
-    if (drv.finishTime !== null) {
-      state.cpuTime = drv.finishTime;
-      toast('CPU finished!', 1600);
-      showHint('CPU finished — keep going, or tap ↻ to restart', 3500);
-      $('section-label').textContent = 'CPU finished';
+  function stepCpus() {
+    for (const drv of state.cpus) {
+      if (drv.finishTime !== null) continue;
+      drv.step(CFG.DT, state.time);
+      if (drv.finishTime !== null && state.cpuTime === null) {
+        state.cpuTime = drv.finishTime;
+        toast('A CPU finished!', 1600);
+        showHint('A CPU finished first. Keep going, or tap ↻ to restart.', 3500);
+        $('section-label').textContent = 'CPU finished';
+      }
     }
   }
 
@@ -256,13 +317,14 @@
       const left = state.countdownEnd - performance.now();
       if (left > 0) {
         const n = Math.min(3, Math.ceil(left / 1000));
-        if (n !== countdownShown) { countdownShown = n; toast(String(n), 900); }
+        if (n !== countdownShown) { countdownShown = n; toast(String(n), 900); sfx('count'); }
         render();
         rafId = requestAnimationFrame(frame);
         return;
       }
       state.countdownEnd = 0;
       toast('GO!', 700);
+      sfx('go');
       if (!state.limbs.arm.length && !state.limbs.leg.length) showHint('Draw legs to start moving', 3000);
       lastTs = 0;
     }
@@ -275,7 +337,8 @@
       D.step(state.course, state.player, CFG.DT);
       const broken = D.shatter(state.course, state.player, state.limbs);
       if (broken) onShatter(broken);
-      stepCpu();
+      stepCpus();
+      recordSample();
       if (hooks.onStep) hooks.onStep(CFG.DT, state.time);
       if (state.player.x >= state.course.finishX) { finish(); break; }
       // Fell out of the world somehow: put the runner back on the ground.
@@ -296,6 +359,7 @@
     spawnShards(state.player, broken.lost);
     state.limbs = broken.limbs;
     state.player = broken.runner;
+    recordLimbs();
     renderPad();
     const what = broken.lost.map(k => LIMB_NAMES[k]).join(' and ');
     toast(what + ' shattered!', 1200);
@@ -313,43 +377,207 @@
       if (hooks.onFinish) hooks.onFinish(state.time);
       return;
     }
-    const win = state.cpuTime === null;
+    const place = 1 + state.cpus.filter(d => d.finishTime !== null && d.finishTime <= state.time).length;
+    const win = place === 1;
+    const tutorial = state.stage === D.TUTORIAL;
     const title = $('result-title');
-    title.textContent = win ? 'You win!' : 'CPU wins…';
+    title.textContent = tutorial ? 'Tutorial complete!' : win ? (state.cpus.length ? 'You win!' : 'Finished!') : 'You finished ' + ordinal(place);
     title.className = win ? 'win' : 'lose';
     $('result-stage').textContent = stageName(state.stage);
     $('result-time').textContent = state.time.toFixed(2) + ' s';
-    $('result-cpu').textContent = win ? 'CPU was still racing' : 'CPU finished in ' + state.cpuTime.toFixed(2) + ' s';
-    $('next-btn').textContent = win ? (state.stage + 1 < D.STAGES.length ? 'Next stage' : state.stage + 1 === D.STAGES.length ? 'Endless mode' : 'Next course') : 'Try again';
-    $('next-btn').dataset.win = win ? '1' : '';
-    const prev = save.best[state.stage];
+    const firstCpu = state.cpus.filter(d => d.finishTime !== null).sort((a, b) => a.finishTime - b.finishTime)[0];
+    $('result-cpu').textContent = !state.cpus.length ? '' : win
+      ? (state.cpus.length === 1 ? 'The CPU was still racing' : 'All ' + state.cpus.length + ' CPUs were still racing')
+      : 'Fastest CPU: ' + firstCpu.finishTime.toFixed(2) + ' s';
+    const key = bestKey();
+    const prev = save.best[key];
     const best = $('result-best');
-    if (win && (prev === undefined || state.time < prev)) {
-      save.best[state.stage] = +state.time.toFixed(2);
-      best.textContent = prev === undefined ? 'First clear!' : 'New best! (was ' + prev.toFixed(2) + ' s)';
+    const newBest = prev === undefined || state.time < prev;
+    if (newBest) {
+      save.best[key] = +state.time.toFixed(2);
+      best.textContent = prev === undefined ? 'First finish on this course!' : 'New best! (was ' + prev.toFixed(2) + ' s)';
       best.className = 'new';
+      saveGhost(ghostKey(), state.trace, state.time);
     } else {
-      best.textContent = prev === undefined ? '' : 'Best: ' + prev.toFixed(2) + ' s';
+      best.textContent = 'Best: ' + prev.toFixed(2) + ' s';
       best.className = '';
     }
-    if (win) { save.stage = state.stage + 1; save.unlocked = Math.max(save.unlocked || 0, save.stage); }
+    let next;
+    if (tutorial) { next = 'Start Stage 1'; save.tutorialDone = true; }
+    else if (state.daily) next = 'Race again';
+    else if (!win) next = 'Try again';
+    else next = state.stage + 1 < D.STAGES.length ? 'Next stage' : state.stage + 1 === D.STAGES.length ? 'Endless mode' : 'Next course';
+    $('next-btn').textContent = next;
+    $('next-btn').dataset.action = tutorial ? 'stage1' : state.daily ? 'again' : win ? 'next' : 'again';
+    // A second button to replay the same course, when the main one moves on.
+    $('again-btn').hidden = $('next-btn').dataset.action === 'again';
+    if (win && !tutorial && !state.daily && state.stage < D.RANDOM_BASE) {
+      save.stage = state.stage + 1;
+      save.unlocked = Math.max(save.unlocked || 0, save.stage);
+    }
     persist();
+    $('leaderboard').hidden = true;
+    if (state.daily) submitDaily(state.time, state.trace);
     $('result').hidden = false;
+    sfx(win ? 'win' : 'lose');
     updateHud();
     render();
     $('next-btn').focus();
   }
 
+  function ordinal(n) {
+    const s = ['th', 'st', 'nd', 'rd'], v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  }
+  const round1 = v => Math.round(v * 10) / 10;
+
+  // ---------------- Best-run ghost ----------------
+  function bestKey() { return state.daily ? 'daily:' + state.daily.day : String(state.stage); }
+  function ghostKey() { return bestKey(); }
+
+  function recordSample() {
+    const tr = state.trace;
+    if (!tr || state.time - tr.lastT < 0.1) return;
+    tr.lastT = state.time;
+    const b = state.player;
+    tr.samples.push([round1(state.time), round1(b.x), round1(b.y), round1(b.joints[0].angle), round1(b.joints[1].angle)]);
+  }
+  function recordLimbs() {
+    if (state.trace) state.trace.limbs.push([round1(state.time), D.encodeLimbs(state.limbs)]);
+  }
+
+  function loadGhosts() {
+    try { return JSON.parse(localStorage.getItem(GHOST_KEY) || '{}'); } catch (e) { return {}; }
+  }
+  function loadGhost(key) {
+    const g = loadGhosts()[key];
+    return g && g.samples && g.samples.length > 1 ? Object.assign(g, { runner: null, limbsAt: -1 }) : null;
+  }
+  function saveGhost(key, trace, time) {
+    if (!trace) return;
+    const all = loadGhosts();
+    trace.samples.push([round1(time), round1(state.player.x), round1(state.player.y), 0, 0]);
+    all[key] = { time, samples: trace.samples, limbs: trace.limbs, savedAt: Date.now() };
+    // Keep the most recent few courses so storage stays small.
+    const keys = Object.keys(all).sort((a, b) => all[b].savedAt - all[a].savedAt);
+    for (const k of keys.slice(MAX_GHOSTS)) delete all[k];
+    try { localStorage.setItem(GHOST_KEY, JSON.stringify(all)); } catch (e) { /* storage full or blocked */ }
+  }
+
+  // The ghost's position at time t (blended between samples), or null once it has finished.
+  function ghostAt(t) {
+    const g = state.ghost;
+    if (!g) return null;
+    const s = g.samples;
+    if (t > s[s.length - 1][0]) return null;
+    let i = g.cursor || 1;
+    if (s[i - 1][0] > t) i = 1;
+    while (i < s.length - 1 && s[i][0] < t) i++;
+    g.cursor = i;
+    const a = s[i - 1], b = s[i];
+    const k = b[0] > a[0] ? Math.max(0, Math.min(1, (t - a[0]) / (b[0] - a[0]))) : 1;
+    return { x: a[1] + (b[1] - a[1]) * k, y: a[2] + (b[2] - a[2]) * k, a: a[3] + (b[3] - a[3]) * k, b: a[4] + (b[4] - a[4]) * k };
+  }
+  function drawGhost(g) {
+    const gh = state.ghost;
+    const p = gh && state.racing && ghostAt(state.time);
+    if (!p) return;
+    // Use the limbs the ghost had at this moment.
+    let li = 0;
+    for (let i = 0; i < gh.limbs.length; i++) if (gh.limbs[i][0] <= state.time) li = i;
+    if (li !== gh.limbsAt || !gh.runner) {
+      gh.limbsAt = li;
+      gh.runner = D.createRunner(D.decodeLimbs(gh.limbs[li][1]), GHOST_COLOR, 1);
+    }
+    const r = gh.runner;
+    r.x = p.x; r.y = p.y;
+    if (r.joints[0]) r.joints[0].angle = p.a;
+    if (r.joints[1]) r.joints[1].angle = p.b;
+    drawRunner(g, r, 0.4);
+    g.save();
+    g.font = 'bold 11px system-ui, sans-serif'; g.textAlign = 'center';
+    g.fillStyle = 'rgba(60,66,80,0.7)';
+    g.fillText('Your best', r.x + r.head.x, r.y + r.head.y - r.head.r - 7);
+    g.restore();
+  }
+
+  // ---------------- Daily course ----------------
+  let serverOk = null; // does /api/daily exist here (served by the Worker)?
+  function enterDaily() {
+    const day = D.today();
+    state.daily = { day };
+    state.stage = D.dailyStage(day);
+    closeOptions();
+    $('result').hidden = true;
+    resetStage();
+    toast('Daily course', 1200);
+    showHint('Today\u2019s course is the same for everyone. Draw to start.', 0);
+  }
+  function leaveDaily() {
+    state.daily = null;
+    state.stage = Math.min(save.stage, save.unlocked || 0);
+  }
+
+  async function submitDaily(time, trace) {
+    const lb = $('leaderboard');
+    lb.hidden = false;
+    $('lb-title').textContent = 'Today\u2019s leaderboard';
+    $('lb-list').textContent = '';
+    $('lb-note').textContent = 'Sending your time…';
+    const day = state.daily.day;
+    try {
+      const run = trace.samples.map(s => [s[0], s[1]]);
+      const res = await fetch('/api/daily', {
+        method: 'POST', headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ day, player: save.player, name: playerName(), time: +time.toFixed(2), trace: run }),
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) { $('lb-note').textContent = out.error || 'The leaderboard is not available here.'; serverOk = res.status !== 404 && res.status !== 503; }
+      await showLeaderboard(day, res.ok);
+    } catch (e) {
+      $('lb-note').textContent = 'The leaderboard needs the online version of the game.';
+    }
+  }
+  async function showLeaderboard(day, sent) {
+    const res = await fetch('/api/daily?day=' + day + '&player=' + encodeURIComponent(save.player), { cache: 'no-store' });
+    if (!res.ok) { if (!sent) return; $('lb-note').textContent = 'Could not load the leaderboard.'; return; }
+    const data = await res.json();
+    const ol = $('lb-list');
+    ol.textContent = '';
+    data.top.forEach((r, i) => {
+      const li = document.createElement('li');
+      if (r.you) li.className = 'you';
+      const rk = document.createElement('span'); rk.className = 'rk'; rk.textContent = ordinal(i + 1);
+      const nm = document.createElement('span'); nm.className = 'nm'; nm.textContent = r.you ? r.name + ' (you)' : r.name;
+      const tm = document.createElement('span'); tm.textContent = r.time.toFixed(2) + ' s';
+      li.append(rk, nm, tm);
+      ol.append(li);
+    });
+    if (sent) $('lb-note').textContent = data.you
+      ? 'You are ' + ordinal(data.you.rank) + ' of ' + data.total + ' today (best ' + data.you.time.toFixed(2) + ' s).'
+      : data.total + ' runners today.';
+  }
+  function playerName() {
+    try { return localStorage.getItem('draw-roll-race-name') || 'Runner'; } catch (e) { return 'Runner'; }
+  }
+
   // Before a race starts (or after it ends), tap the stage name to cycle through unlocked stages.
   function updateStageButton() {
     const btn = $('stage-label');
-    const can = state.mode === 'solo' && !state.racing && (save.unlocked || 0) > 0;
+    const can = state.mode === 'solo' && !state.racing;
     btn.disabled = !can;
     btn.classList.toggle('switchable', can);
   }
   $('stage-label').addEventListener('click', () => {
     if (state.racing) return;
-    state.stage = (state.stage + 1) % ((save.unlocked || 0) + 1);
+    // Cycle: Tutorial, Stage 1 .. the furthest unlocked stage. Leaving the daily course goes back to your stage.
+    const order = [D.TUTORIAL];
+    for (let i = 0; i <= (save.unlocked || 0); i++) order.push(i);
+    if (state.daily) { leaveDaily(); }
+    else {
+      const k = order.indexOf(state.stage);
+      state.stage = order[(k + 1) % order.length];
+    }
     save.stage = state.stage; persist();
     $('result').hidden = true;
     resetStage();
@@ -365,8 +593,16 @@
     else showHint(HINT, 0);
   });
 
+  $('again-btn').addEventListener('click', () => {
+    $('result').hidden = true;
+    resetStage();
+    startRace();
+  });
+
   $('next-btn').addEventListener('click', () => {
-    if ($('next-btn').dataset.win) state.stage++;
+    const action = $('next-btn').dataset.action;
+    if (action === 'stage1') state.stage = 0;
+    else if (action === 'next') state.stage++;
     $('result').hidden = true;
     resetStage();
     startRace();
@@ -625,7 +861,8 @@
       ctx.fillText(label, gx + 34, gy - 106);
     }
 
-    if (state.cpu) drawRunner(ctx, state.cpu, 0.85);
+    drawGhost(ctx);
+    for (const drv of state.cpus) drawRunner(ctx, drv.runner, 0.85);
     if (hooks.drawWorld) hooks.drawWorld(ctx);
     if (state.player) drawRunner(ctx, state.player, 1);
     drawShards(ctx);
@@ -650,6 +887,41 @@
     ctx.restore();
   }
 
+  // ---------------- Options ----------------
+  function applySettings() {
+    document.body.classList.toggle('pad-small', save.pad === 'small');
+    document.body.classList.toggle('pad-large', save.pad === 'large');
+  }
+  function openOptions() {
+    if (state.racing) return;
+    $('opt-cpus').value = String(save.cpuCount);
+    $('opt-difficulty').value = save.cpuDifficulty;
+    $('opt-sound').checked = !!save.sound;
+    $('opt-vibrate').checked = !!save.vibrate;
+    $('opt-ghost').checked = !!save.ghost;
+    $('opt-pad').value = save.pad;
+    $('daily-btn').hidden = $('tutorial-btn').hidden = state.mode !== 'solo';
+    $('options').hidden = false;
+  }
+  function closeOptions() { $('options').hidden = true; }
+  $('menu-btn').addEventListener('click', () => ($('options').hidden ? openOptions() : closeOptions()));
+  $('options-close').addEventListener('click', closeOptions);
+  $('opt-cpus').addEventListener('change', e => { save.cpuCount = +e.target.value; persist(); });
+  $('opt-difficulty').addEventListener('change', e => { save.cpuDifficulty = e.target.value; persist(); });
+  $('opt-sound').addEventListener('change', e => { save.sound = e.target.checked; persist(); });
+  $('opt-vibrate').addEventListener('change', e => { save.vibrate = e.target.checked; persist(); });
+  $('opt-ghost').addEventListener('change', e => { save.ghost = e.target.checked; persist(); });
+  $('opt-pad').addEventListener('change', e => { save.pad = e.target.value; persist(); applySettings(); resize(); });
+  $('daily-btn').addEventListener('click', enterDaily);
+  $('tutorial-btn').addEventListener('click', () => {
+    state.daily = null;
+    state.stage = D.TUTORIAL;
+    closeOptions();
+    $('result').hidden = true;
+    resetStage();
+    showHint(D.TIPS.bumps, 0);
+  });
+
   // ---------------- API for online.js ----------------
   window.DRRGame = {
     state, hooks, COLORS,
@@ -657,6 +929,8 @@
     resetStage, startRace, updateStageButton,
     setStage(n) { state.stage = n; },
     stopRace() { state.racing = false; state.countdownEnd = 0; cancelAnimationFrame(rafId); updateStageButton(); },
+    save,
+    closeOptions,
     hideResult() { $('result').hidden = true; },
     defaultHint: HINT,
   };
@@ -665,8 +939,10 @@
   // ?stage=N opens a stage directly (handy for testing a course).
   const askedStage = parseInt(new URLSearchParams(location.search).get('stage'), 10);
   if (Number.isInteger(askedStage) && askedStage >= 0) { state.stage = askedStage; state.course = D.buildCourse(askedStage); }
+  applySettings();
   buildProgress();
   renderPad();
   resize();
   updateHud();
+  if (state.stage === D.TUTORIAL) showHint('Welcome! ' + D.TIPS.bumps, 0);
 })();

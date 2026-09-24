@@ -10,7 +10,7 @@ test('a solo race reaches the results', async () => {
   const p = await newPlayer(browser, 'Solo', { width: 1280, height: 800 });
   await p.goto(BASE + '?stage=990');
   await drawWheel(p);
-  await waitForText(p, '#result', /You win|CPU wins/, 60000);
+  await waitForText(p, '#result', /You win|You finished|Finished/, 60000);
   assert.match(await text(p, '#result-time'), /\d+\.\d\d s/);
   assert.deepEqual(p.errors, []);
   await p.context().close();

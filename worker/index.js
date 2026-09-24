@@ -2,6 +2,7 @@
 // Static files come from ./public (see wrangler.jsonc); this handles /api/*.
 import { RaceRoom } from './room.js';
 import { Directory } from './directory.js';
+import { handleDaily } from './daily.js';
 
 export { RaceRoom, Directory };
 
@@ -31,7 +32,14 @@ export default {
     const url = new URL(request.url);
     const parts = url.pathname.split('/').filter(Boolean); // ['api', ...]
 
-    if (parts[1] === 'health') return json({ ok: true });
+    if (parts[1] === 'health') return json({ ok: true, daily: !!env.DB });
+
+    if (parts[1] === 'daily' && parts.length === 2) {
+      if (request.method === 'POST' && !(await allowed(env.SUBMIT_LIMITER, request))) {
+        return json({ error: 'Too many runs sent from your network. Wait a minute and try again.' }, 429);
+      }
+      return handleDaily(request, env);
+    }
 
     if (parts[1] === 'rooms' && parts.length === 2) {
       // POST: a fresh, unused code for a new room. GET: public rooms.

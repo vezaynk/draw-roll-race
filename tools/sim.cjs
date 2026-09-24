@@ -21,7 +21,7 @@ function race(stage, difficulty, seed) {
 }
 
 const endless = +(process.argv[2] || 25), random = +(process.argv[3] || 25), per = +(process.argv[4] || 3);
-const stages = [0, 1, 2];
+const stages = [0, 1, 2, D.TUTORIAL, D.dailyStage(D.today())];
 for (let i = 0; i < endless; i++) stages.push(D.STAGES.length + i);
 for (let i = 0; i < random; i++) stages.push(D.RANDOM_BASE + 7919 * i + 13);
 

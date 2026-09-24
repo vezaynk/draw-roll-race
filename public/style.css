@@ -115,20 +115,20 @@ button:focus-visible { outline: 3px solid var(--player); outline-offset: 2px; }
 }
 #hud .bar .dot.remote { width: 12px; height: 12px; margin: -6px 0 0 -6px; opacity: .85; }
 
-#lobby, #online-menu {
+#lobby, #online-menu, #options {
   position: fixed; left: 0; right: 0; top: calc(max(14px, env(safe-area-inset-top)) + 56px);
   display: flex; justify-content: center; padding: 0 16px; pointer-events: none;
 }
-#lobby[hidden], #online-menu[hidden] { display: none; }
-#lobby .card, #online-menu .card {
+#lobby[hidden], #online-menu[hidden], #options[hidden] { display: none; }
+#lobby .card, #online-menu .card, #options .card {
   pointer-events: auto; width: min(100%, 380px);
   max-height: calc(100vh - 56px - min(86vw, 420px) * 0.625 - 110px); overflow-y: auto;
   background: #fff; border: 2px solid var(--ink); border-radius: 18px;
   padding: 14px 16px; box-shadow: 0 12px 32px rgba(0,0,0,.2);
   display: flex; flex-direction: column; gap: 10px;
 }
-#lobby .lobby-head, #online-menu .lobby-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
-#lobby h2, #online-menu h2 { margin: 0; font-size: 20px; overflow-wrap: anywhere; }
+#lobby .lobby-head, #online-menu .lobby-head, #options .lobby-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+#lobby h2, #online-menu h2, #options h2 { margin: 0; font-size: 20px; overflow-wrap: anywhere; }
 #room-code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; letter-spacing: .08em; }
 #copy-link { padding: 5px 12px; font-size: 13px; }
 #lobby-status { margin: 0; font-size: 14px; color: var(--muted); }
@@ -157,7 +157,7 @@ button.quiet { border-color: #c9cdd6; color: var(--muted); padding: 5px 12px; fo
 button:disabled { opacity: .5; cursor: default; }
 #lobby.compact .name-row, #lobby.compact #player-list { display: none; }
 
-#online-menu .card { max-height: calc(100vh - 80px); gap: 14px; }
+#online-menu .card, #options .card { max-height: calc(100vh - 80px); gap: 14px; }
 .menu-block { display: flex; flex-direction: column; gap: 8px; border-top: 1px solid #e3e6ec; padding-top: 12px; }
 .menu-block h3, #results-box h3 { margin: 0; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .block-head { display: flex; align-items: center; justify-content: space-between; }
@@ -195,3 +195,42 @@ button:disabled { opacity: .5; cursor: default; }
 #add-cpu { padding: 5px 12px; font-size: 13px; }
 .remove-cpu { margin-left: 4px; padding: 0 8px; font-size: 13px; line-height: 20px; border-color: #c9cdd6; color: var(--muted); }
 #lobby.compact .room-meta, #lobby.compact #cpu-controls { display: none; }
+
+/* ---------- Options, leaderboard, ghost ---------- */
+#menu-btn {
+  pointer-events: auto; width: 34px; height: 34px; padding: 0; margin-top: -6px;
+  font-size: 17px; line-height: 1; background: rgba(255,255,255,.9); text-shadow: none;
+}
+.btn-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.menu-note { margin: 0; font-size: 13px; color: var(--muted); }
+.check { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.check input { width: 18px; height: 18px; accent-color: var(--ink); }
+.field-row select { font: inherit; padding: 5px 8px; border: 2px solid #c9cdd6; border-radius: 10px; background: #fff; color: var(--ink); }
+#leaderboard { text-align: left; border-top: 1px solid #e3e6ec; padding-top: 10px; }
+#leaderboard h3 { margin: 0 0 6px; font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+#lb-list { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 3px; max-height: 180px; overflow-y: auto; }
+#lb-list li { display: flex; gap: 8px; font-size: 14px; font-variant-numeric: tabular-nums; }
+#lb-list li.you { font-weight: 800; color: var(--player); }
+#lb-list .rk { width: 2.2em; color: var(--muted); }
+#lb-list .nm { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#lb-note { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+#hud .bar .dot.ghost { width: 10px; height: 10px; margin: -5px 0 0 -5px; background: #fff; border-color: rgba(31,36,48,.5); opacity: .8; }
+
+/* Drawing pad sizes */
+body.pad-small #pad-wrap { width: min(62vw, 300px); }
+body.pad-large #pad-wrap { width: min(94vw, 540px); }
+
+/* Phones held sideways: put the pad in the corner so the course stays visible. */
+@media (orientation: landscape) and (max-height: 520px) {
+  #pad-wrap { left: auto; right: max(12px, env(safe-area-inset-right)); transform: none; width: min(32vw, 260px); bottom: 10px; }
+  body.pad-small #pad-wrap { width: min(24vw, 190px); }
+  body.pad-large #pad-wrap { width: min(44vw, 340px); }
+  #pad-hint { font-size: 12px; }
+  #lobby, #online-menu, #options, #result { justify-content: flex-start; padding-left: max(16px, env(safe-area-inset-left)); }
+  #lobby .card, #online-menu .card, #options .card { max-height: calc(100vh - 70px); width: min(55vw, 380px); }
+  #result { padding-top: 60px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #toast, #pad-hint { transition: none; }
+}

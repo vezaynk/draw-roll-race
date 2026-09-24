@@ -15,7 +15,7 @@
   <div class="row">
     <button id="stage-label" type="button" title="Switch stage">Stage 1</button>
     <span id="section-label"></span>
-    <span class="right"><button id="online-btn" type="button" hidden>Online</button><span id="timer">0.00 s</span><button id="restart-btn" type="button" aria-label="Restart stage" title="Restart stage">↻</button></span>
+    <span class="right"><button id="menu-btn" type="button" aria-label="Options" title="Options">⚙</button><button id="online-btn" type="button" hidden>Online</button><span id="timer">0.00 s</span><button id="restart-btn" type="button" aria-label="Restart stage" title="Restart stage">↻</button></span>
   </div>
 </header>
 
@@ -33,7 +33,56 @@
     <p class="big" id="result-time"></p>
     <p id="result-cpu"></p>
     <p id="result-best"></p>
+    <section id="leaderboard" hidden>
+      <h3 id="lb-title">Today's leaderboard</h3>
+      <ol id="lb-list"></ol>
+      <p id="lb-note"></p>
+    </section>
     <button id="next-btn" type="button" class="primary"></button>
+    <button id="again-btn" type="button">Race this course again</button>
+  </div>
+</div>
+
+<div id="options" hidden>
+  <div class="card">
+    <div class="lobby-head">
+      <h2>Options</h2>
+      <button id="options-close" type="button" class="quiet">Done</button>
+    </div>
+    <section class="menu-block" aria-labelledby="play-title">
+      <h3 id="play-title">Play</h3>
+      <div class="btn-row">
+        <button id="daily-btn" type="button" class="primary">Today's daily course</button>
+        <button id="tutorial-btn" type="button">Tutorial</button>
+      </div>
+      <p class="menu-note">The daily course is the same for everyone today, with a leaderboard.</p>
+    </section>
+    <section class="menu-block" aria-labelledby="cpu-title">
+      <h3 id="cpu-title">Solo opponents</h3>
+      <div class="field-row">
+        <label for="opt-cpus">CPUs</label>
+        <select id="opt-cpus">
+          <option value="0">None</option><option value="1">1</option><option value="2">2</option><option value="3">3</option>
+          <option value="4">4</option><option value="5">5</option><option value="6">6</option><option value="7">7</option>
+        </select>
+        <label for="opt-difficulty">Level</label>
+        <select id="opt-difficulty">
+          <option value="easy">Easy</option><option value="normal">Normal</option><option value="hard">Hard</option><option value="mixed">Mixed</option>
+        </select>
+      </div>
+    </section>
+    <section class="menu-block" aria-labelledby="feel-title">
+      <h3 id="feel-title">Sound and screen</h3>
+      <label class="check"><input id="opt-sound" type="checkbox"> Sound effects</label>
+      <label class="check"><input id="opt-vibrate" type="checkbox"> Vibrate on phones</label>
+      <label class="check"><input id="opt-ghost" type="checkbox"> Race your best run (ghost)</label>
+      <div class="field-row">
+        <label for="opt-pad">Drawing pad</label>
+        <select id="opt-pad">
+          <option value="small">Small</option><option value="normal">Normal</option><option value="large">Large</option>
+        </select>
+      </div>
+    </section>
   </div>
 </div>
 
@@ -124,6 +173,7 @@
 <script src="src/physics.js"></script>
 <script src="src/cpu.js"></script>
 <script src="src/game.js"></script>
+<script src="src/sound.js"></script>
 <script src="src/online.js"></script>
 </body>
 </html>
