@@ -10,7 +10,7 @@ import { playerName, save } from './storage';
 
 interface Leaderboard {
   day: string;
-  top: { name: string; time: number; you: boolean }[];
+  top: { name: string; time: number; you: boolean; verifySeconds: number | null }[];
   you: { time: number; rank: number } | null;
   total: number;
 }
@@ -61,6 +61,18 @@ function note(text: string): void {
   byId('lb-note').textContent = text;
 }
 
+/** A spinner before the note while the server checks your run. */
+function checking(on: boolean): void {
+  byId('lb-note').classList.toggle('checking', on);
+}
+
+/** Every run on the board was replayed by the server before it was saved. */
+function verifiedMark(seconds: number | null): HTMLElement {
+  const mark = el('span', 'verify ok', '✅');
+  mark.title = seconds === null ? 'Server-validated' : `Server-validated in ${seconds.toFixed(2)} seconds`;
+  return mark;
+}
+
 function renderBoard(data: Leaderboard): void {
   const list = byId('lb-list');
   list.textContent = '';
@@ -69,6 +81,7 @@ function renderBoard(data: Leaderboard): void {
     item.append(
       el('span', 'rk', ordinal(i + 1)),
       el('span', 'nm', r.you ? `${r.name} (you)` : r.name),
+      verifiedMark(r.verifySeconds),
       el('span', '', `${r.time.toFixed(2)} s`),
     );
     list.append(item);
@@ -98,7 +111,8 @@ export default async function submitDaily(
   byId('leaderboard').hidden = false;
   byId('lb-title').textContent = 'Today’s leaderboard';
   byId('lb-list').textContent = '';
-  note('Sending your time…');
+  note('Checking your run on the server…');
+  checking(true);
   try {
     const res = await fetch('/api/daily', {
       method: 'POST',
@@ -111,9 +125,18 @@ export default async function submitDaily(
         inputs: rec.inputs,
       }),
     });
-    const out = await res.json().catch(() => ({})) as { error?: string; time?: number };
-    if (!res.ok) note(out.error ?? 'The leaderboard is not available here.');
+    const out = await res.json().catch(() => ({})) as {
+      error?: string; time?: number; verifySeconds?: number;
+    };
+    checking(false);
+    if (!res.ok) {
+      const failed = out.verifySeconds === undefined ? '' : `⚠️ Failed verify run in ${out.verifySeconds.toFixed(2)} seconds. `;
+      note(`${failed}${out.error ?? 'The leaderboard is not available here.'}`);
+    }
     await showLeaderboard(day, res.ok);
+    if (res.ok && out.verifySeconds !== undefined) {
+      note(`✅ ${byId('lb-note').textContent} Server-validated in ${out.verifySeconds.toFixed(2)} seconds.`);
+    }
     // The server times runs by replaying them; say so if its time differs from ours.
     if (res.ok && out.time !== undefined && Math.abs(out.time - time) >= 0.01) {
       note(`${byId('lb-note').textContent} The server timed your run at ${out.time.toFixed(2)} s.`);
@@ -121,6 +144,7 @@ export default async function submitDaily(
     // You may have taken the lead (or someone else has since).
     if (res.ok) await loadLeader(day);
   } catch {
+    checking(false);
     note('The leaderboard needs the online version of the game.');
   }
 }

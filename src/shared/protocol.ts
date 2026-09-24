@@ -1,5 +1,6 @@
 // Messages between browsers and a room (worker/room.ts), and the data they carry.
 import type { Difficulty } from './cpu/personality';
+import type { RunInput } from './replay';
 import type {
   EncodedLimbs, LimbKind, Pose,
 } from './types';
@@ -43,6 +44,13 @@ export interface RaceResult {
   cpu: boolean;
   /** A CPU that did not finish in time. */
   dnf?: boolean;
+  /**
+   * People's finishes are checked by replaying their run on the server: pending until the replay
+   * is done, then ok or failed. (CPUs are run by the server, so they have none.)
+   */
+  verify?: 'pending' | 'ok' | 'failed';
+  /** How long the check took. */
+  verifySeconds?: number;
 }
 
 export type RoomPhase = 'lobby' | 'racing';
@@ -88,7 +96,7 @@ export type ClientMessage =
   | { type: 'addCpu'; difficulty: Difficulty }
   | { type: 'removeCpu'; id: string }
   | { type: 'start'; stage: number }
-  | { type: 'finish'; r: number; time: number }
+  | { type: 'finish'; r: number; time: number; inputs: RunInput[] }
   | { type: 'giveup'; r: number };
 
 export type ServerMessage =
@@ -110,6 +118,9 @@ export type ServerMessage =
   | { type: 'state'; id: string; x: number; y: number; a: number; b: number }
   | { type: 'cpuStates'; s: CpuState[] }
   | { type: 'result'; raceId: number; result: RaceResult; place: number | null }
+  | {
+    type: 'verified'; raceId: number; id: string; ok: boolean; time: number | null; seconds: number;
+  }
   | {
     type: 'raceEnd'; raceId: number; results: RaceResult[]; hostId: string | null; cpus: RoomCpu[];
   }

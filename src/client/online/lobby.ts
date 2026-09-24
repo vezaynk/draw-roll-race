@@ -86,6 +86,28 @@ function renderRacers(v: LobbyView, isHost: boolean, racing: boolean): void {
   byId('player-list').replaceChildren(...rows);
 }
 
+/** A spinner while the room checks a finish, then ✅ or ⚠️ (hover for how long the check took). */
+function verifyMark(r: RaceResult): HTMLElement | null {
+  const seconds = (r.verifySeconds ?? 0).toFixed(2);
+  if (r.verify === 'pending') {
+    const spinner = el('span', 'verify pending');
+    spinner.title = 'Checking this run on the server…';
+    spinner.setAttribute('aria-label', 'Checking');
+    return spinner;
+  }
+  if (r.verify === 'ok') {
+    const mark = el('span', 'verify ok', '✅');
+    mark.title = `Server-validated in ${seconds} seconds`;
+    return mark;
+  }
+  if (r.verify === 'failed') {
+    const mark = el('span', 'verify failed', '⚠️');
+    mark.title = `Failed verify run in ${seconds} seconds`;
+    return mark;
+  }
+  return null;
+}
+
 function resultTime(r: RaceResult): string {
   if (r.time !== null) return `${r.time.toFixed(2)} s`;
   return r.dnf ? 'did not finish' : 'gave up';
@@ -98,13 +120,19 @@ function renderResults(v: LobbyView, racing: boolean): void {
   let place = 0;
   const rows = results.map((r) => {
     const row = el('li');
-    if (r.time !== null) place += 1;
+    const failed = r.verify === 'failed';
+    const placed = r.time !== null && !failed;
+    if (placed) place += 1;
     const mine = r.id === v.you;
+    const name = el('span', 'pname', mine ? 'You' : r.name);
+    if (failed) name.classList.add('struck');
     row.append(
-      el('span', 'place', r.time === null ? '—' : ordinal(place)),
+      el('span', 'place', placed ? ordinal(place) : '—'),
       swatch(mine ? COLORS.player : r.color),
-      el('span', 'pname', mine ? 'You' : r.name),
+      name,
     );
+    const mark = verifyMark(r);
+    if (mark) row.append(mark);
     if (r.cpu) row.append(tag('cpu'));
     row.append(el('span', 'rtime', resultTime(r)));
     return row;

@@ -89,8 +89,13 @@ message in the lobby.
   so the motion can be smoothed. Runners don't collide with each other.
 - The room (a Durable Object) runs the CPUs with the same physics and CPU code
   the browser uses, so they keep racing whoever is watching.
-- The room builds the course too, and only counts a finish if the player's
-  reported positions reached the line at a speed a runner can reach.
+- Every finish is checked by replaying it, in rooms as on the daily course
+  (below). A finish sends what the player drew at which physics step; the room
+  lists it at once with a spinner, replays it, then marks it ✅ (the replay's
+  time replaces the claimed one) or crosses the name out with ⚠️ if the replay
+  doesn't reach the finish, or reaches it later than the room's clock allows.
+  Hover a mark to see how long the check took. The daily leaderboard shows ✅
+  on every run, since only replayed runs are saved.
 - Daily runs are timed by the server. The game records what you drew at which
   physics step; the server replays those drawings on the day's course with the
   same physics and records the replay's time, not the time the browser claims.
@@ -148,8 +153,7 @@ TypeScript throughout, written to the Airbnb style guide's principles (no linter
     generated courses (`stages.ts`), terrain building (`build.ts`), lookups (`queries.ts`) and
     obstacle tips (`tips.ts`).
   - `runner.ts` (the stick figure and its spinning limbs), `physics.ts` (the fixed-step
-    physics), `replay.ts` (stepping a player's run, and replaying recorded runs), `cpu/` (CPU personalities and the `CpuRacer`), `validation.ts` (checks that runs
-    are possible) and `protocol.ts` (messages between browsers and rooms).
+    physics), `replay.ts` (stepping a player's run, and replaying recorded runs), `cpu/` (CPU personalities and the `CpuRacer`) and `protocol.ts` (messages between browsers and rooms).
 - `src/client/`: the game in the browser, bundled by esbuild into `public/app.js`.
   - `main.ts` boots it. `state.ts` holds the game state and the hooks online play uses.
   - `race.ts` (the race loop), `pad.ts` (drawing), `hud.ts`, `results.ts`, `controls.ts`,
@@ -159,12 +163,12 @@ TypeScript throughout, written to the Airbnb style guide's principles (no linter
 - `src/worker/`: the Cloudflare Worker.
   - `index.ts` (routes), `room.ts` (the `RaceRoom` Durable Object), `roomState.ts`,
     `cpuSimulation.ts` (runs a room's CPUs), `directory.ts` (the public room list),
-    `daily.ts` (the leaderboard), `runCheck.ts` (the `RunCheck` Durable Object that replays
-    daily runs), `moderation.ts`, `http.ts`, `env.ts`.
+    `daily.ts` (the leaderboard), `verify.ts` (checks a run by replaying it), `runCheck.ts` (the `RunCheck` Durable Object that replays
+    runs), `moderation.ts`, `http.ts`, `env.ts`.
 - `tools/sim.ts`: checks that CPUs finish every kind of course
   (`npm run sim -- [endless] [random] [cpusPerDifficulty]`).
 - `tests/unit/`: fast tests of the shared code (`npm run test:unit`): replays match exactly,
-  course generation and the physics haven't changed by accident, limb encoding, validation,
+  course generation and the physics haven't changed by accident, limb encoding,
   moderation, CPU personalities.
 - `tests/e2e/`: browser tests (`npm run test:e2e` starts a local Worker with the short test
   courses enabled).
