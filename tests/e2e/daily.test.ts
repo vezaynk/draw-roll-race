@@ -97,11 +97,12 @@ test('daily runs are timed by the server replaying them', async () => {
   };
   assert.equal(board.you?.time, expected);
 
-  // The fastest run of the day comes back with its inputs, for the leader ghost.
+  // The day's leader is named, but their run is never sent out (it would give away their strategy).
   const { leader } = await (await fetch(`${BASE}api/daily/leader?day=${info.day}`)).json() as {
-    leader: { time: number; inputs: unknown[] } | null;
+    leader: { time: number; inputs?: unknown } | null;
   };
-  assert.ok(leader && leader.time <= expected && leader.inputs.length >= 1);
+  assert.ok(leader && leader.time <= expected);
+  assert.equal(leader.inputs, undefined, 'no run in the leader response');
 
   // A run that never reaches the finish, and one without a recording, are refused.
   const stuck = await post({
@@ -115,16 +116,16 @@ test('daily runs are timed by the server replaying them', async () => {
   assert.equal(empty.status, 422);
 });
 
-test('the daily course shows the leader as a ghost', async () => {
+test('the daily course names the leader but never shows their run', async () => {
   const p = await newPlayer(browser, 'Jo', { width: 1280, height: 800 });
   await p.goto(BASE);
   await p.click('#start-daily');
   assert.match(await text(p, '#stage-label'), /Daily course/);
-  await waitForText(p, '#pad-hint', /leader/i, 10000);
+  await waitForText(p, '#pad-hint', /Today’s leader: /, 10000);
   await drawWheel(p);
   await p.waitForTimeout(600);
-  const leaderDot = await p.evaluate(() => document.querySelector<HTMLElement>('#progress .dot.ghost.leader')?.hidden === false);
-  assert.equal(leaderDot, true, 'leader ghost dot visible');
+  // A new player has no best run here, and nobody else's run is shown.
+  assert.equal(await p.evaluate(() => window.drr.state.ghosts.length), 0, 'no ghosts');
   assert.deepEqual(p.errors, []);
   await p.context().close();
 });

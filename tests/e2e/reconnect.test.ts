@@ -24,7 +24,10 @@ test('reconnecting mid-race keeps your place', async () => {
   await eve.waitForTimeout(1200);
   await eve.context().setOffline(false);
 
-  await waitForText(host, '#results-box', /Last race/i, 60000);
+  // The race ends on the results card; back in the lobby, the room's results are listed.
+  await waitForText(host, '#result', /Race results/i, 60000);
+  await host.click('#next-btn');
+  await waitForText(host, '#results-box', /Last race/i);
   const results = await text(host, '#results-list');
   assert.match(results, /Eve/, `Eve finished as herself: ${results}`);
   assert.doesNotMatch(results, /Runner/, `no duplicate racer: ${results}`);

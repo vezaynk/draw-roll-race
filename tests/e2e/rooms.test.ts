@@ -44,8 +44,15 @@ test('public room with CPUs: listing, race, results, host handover, private join
 
   // The host leaves mid-race; the CPUs keep racing and finish.
   await ana.click('#leave-btn');
-  await waitForText(ben, '#results-box', /Last race/i, 60000);
+  // Ben raced, so the race ends on the results card: no "race again", but "Return to lobby".
+  await waitForText(ben, '#result', /Race results/i, 60000);
   step('race ended');
+  assert.equal(await text(ben, '#next-btn'), 'Return to lobby');
+  assert.equal(await ben.isVisible('#again-btn'), false, 'no race again online');
+  assert.equal(await ben.isVisible('#result-exit'), true);
+  assert.match(await text(ben, '#lb-list'), /You/);
+  await ben.click('#next-btn');
+  await waitForText(ben, '#results-box', /Last race/i);
   const results = await text(ben, '#results-list');
   assert.match(results, /You/);
   // Ben's finish was replayed by the room: a tick with how long the check took.
@@ -125,7 +132,9 @@ test('everyone ready starts the race; latecomers can pick whom to watch; emotes'
   await waitForText(gus, '#follow-btn', /Watching (Eve|Fay)/i);
 
   // Back in the lobby, an emote reaches the others.
-  await waitForText(eve, '#results-box', /Last race/i, 60000);
+  await waitForText(eve, '#result', /Race results/i, 60000);
+  await eve.click('#next-btn');
+  await waitForText(eve, '#results-box', /Last race/i);
   await gus.click('#emote-bar button:first-child');
   await eve.waitForFunction(() => /Gus 👋/.test(document.getElementById('toast')?.textContent ?? ''), undefined, { timeout: 5000 });
 

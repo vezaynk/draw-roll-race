@@ -8,8 +8,8 @@ import { sfx } from './sound';
 import { state } from './state';
 import { persist, save } from './storage';
 
-/** What the main button on the results card does. */
-export type NextAction = 'next' | 'again' | 'stage1';
+/** What the main button on the results card does ('lobby': back to the room, online). */
+export type NextAction = 'next' | 'again' | 'stage1' | 'lobby';
 
 /** Key for best times and ghosts: the stage, or the daily course's day. */
 export function courseKey(): string {
@@ -79,6 +79,7 @@ export default function showResults(): void {
   persist();
 
   byId('leaderboard').hidden = true;
+  byId('save-score').hidden = true;
   if (state.daily && state.recording) submitDaily(state.daily.day, state.time, state.recording);
   byId('result').hidden = false;
   sfx(win ? 'win' : 'lose');

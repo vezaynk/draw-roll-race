@@ -1,7 +1,7 @@
 // The daily course leaderboard (D1).
 //
 //   GET  /api/daily?day=YYYY-MM-DD&hash=<your hash>  the day's course, top 20, your best and rank
-//   GET  /api/daily/leader?day=YYYY-MM-DD           the fastest run of the day, to race as a ghost
+//   GET  /api/daily/leader?day=YYYY-MM-DD           who is fastest today (name, time, hash)
 //   POST /api/daily { day, player, name, time, inputs }
 //
 // Players appear only as hashes of their IDs (shared/identity.ts): browsers find their own rows
@@ -75,20 +75,18 @@ async function leaderboard(db: D1Database, url: URL): Promise<Response> {
   });
 }
 
-/** The day's fastest run that has inputs saved, for racing against as a ghost. */
+/**
+ * The day's fastest player: name, time and hash only. Runs themselves are never sent out, since
+ * they would give away the player's strategy.
+ */
 async function leader(db: D1Database, url: URL): Promise<Response> {
   const asked = url.searchParams.get('day') ?? '';
   const day = DAY_RE.test(asked) ? asked : openDays()[0];
-  const row = await db.prepare(`SELECT name, time, hash, run FROM daily_scores
-    WHERE day = ?1 AND run IS NOT NULL ORDER BY time, created_at LIMIT 1`)
-    .bind(day).first<{ name: string; time: number; hash: string; run: string }>();
+  const row = await db.prepare(`SELECT name, time, hash FROM daily_scores
+    WHERE day = ?1 ORDER BY time, created_at LIMIT 1`)
+    .bind(day).first<{ name: string; time: number; hash: string }>();
   if (!row) return json({ day, leader: null });
-  return json({
-    day,
-    leader: {
-      name: row.name, time: row.time, hash: row.hash, inputs: JSON.parse(row.run),
-    },
-  });
+  return json({ day, leader: { name: row.name, time: row.time, hash: row.hash } });
 }
 
 interface Submission {

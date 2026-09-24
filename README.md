@@ -46,11 +46,13 @@ npm test           # type check, unit tests, CPU course simulation, browser test
   switch between the tutorial and the stages you have unlocked. Until a race
   starts, the selected course's name is shown large, with "Draw a limb to
   start" under it.
-- **Exit** stops the race and goes back to the start screen.
+- **Exit** (top bar, and on the results card after any race) stops the race and goes back to
+  the start screen.
 
 The **Daily course** is the same generated course for everyone each day (UTC),
-with a leaderboard of the fastest runs. The day's leader races with you as a
-gold ghost.
+with a leaderboard of the fastest runs. The start screen names the day's
+leader, but only your own best run comes back as a ghost: nobody's run is
+shown to other players, so strategies stay private.
 
 ## Options (⚙)
 
@@ -85,7 +87,7 @@ CPUs still racing get up to 10 more seconds, then the results appear. Anyone
 who joins mid-race watches and joins the next one; the camera follows the
 leader, or tap **Watching … · next** to follow someone else. If your
 connection drops, you rejoin within a minute as the same racer and keep racing.
-**Exit** or **Leave room** takes you back to the start screen; leaving during a
+**Exit** (in the top bar or on the room card) takes you back to the start screen; leaving during a
 race gives it up.
 
 Six quick emotes (👋 😂 😮 🔥 👏 😭) pop up as bubbles over your runner, or as a
@@ -110,8 +112,8 @@ message in the lobby.
   same physics and records the replay's time, not the time the browser claims.
   A run that doesn't reach the finish is refused. The replay runs in a
   `RunCheck` Durable Object, a slice at a time, so no single request uses much
-  CPU time. Each player's best run is kept, and the day's fastest is sent to
-  other players, who rebuild it as the leader ghost by replaying it too.
+  CPU time. Each player's best run is kept on the server, but runs are never
+  sent to other players.
 - For replays to match, the physics must give identical numbers in every
   browser and on the server. JavaScript rounds `+ − × ÷` and square roots the
   same everywhere, but `Math.sin`, `Math.cos` and `Math.hypot` may differ in
@@ -128,13 +130,16 @@ message in the lobby.
 - Every player has a secret random ID (a UUID) and a display name, both saved in the
   browser. The server never sends anyone's ID out: leaderboards carry a public hash of it
   (the first 128 bits of SHA-256), and each browser finds its own rows by hashing its own ID.
-- **Options → Your player → Save with a passkey** claims the player: the server keeps the
-  passkey's public key with the player. From then on, posting as that player needs a
-  signed-in session (an HttpOnly cookie), not just the ID.
-- **Sign in with a passkey** on another device makes it the same player: the server sends
-  that player's ID to the signed-in browser only. Any daily times the device had as an
-  anonymous player move over, keeping the better time for each day.
-- A player can have any number of passkeys; a signed-in device adds one with **Add another
+- There is one button, **Save with a passkey** (in Options → Your player, and as **Save
+  your score** after a daily run), with no separate "create account" and "sign in":
+  - If the browser has a passkey for the site, using it makes this device that passkey's
+    player: the server sends that player's ID to this browser only, and remaps the device's
+    own anonymous player into it (its daily times move over, keeping the better time per day).
+  - Otherwise a new passkey is made for the device's player, which claims it: from then on,
+    posting as that player needs a signed-in session (an HttpOnly cookie), not just the ID.
+  - Some browsers show an empty passkey list first when there is none yet; dismissing it goes
+    on to make one (or, if the browser needs a fresh tap for that, the next tap does).
+- A player can have any number of passkeys; a saved device adds one with **Add another
   passkey**. **Log out** ends the session and forgets everything the game saved on that
   device, which then starts as a new player.
 - Passkeys belong to the exact site address, so each PR preview has its own. Challenges are

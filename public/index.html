@@ -47,9 +47,11 @@
       <h3 id="lb-title">Today's leaderboard</h3>
       <ol id="lb-list"></ol>
       <p id="lb-note"></p>
+      <button id="save-score" type="button" class="primary" hidden>Save your score</button>
     </section>
     <button id="next-btn" type="button" class="primary"></button>
     <button id="again-btn" type="button">Race this course again</button>
+    <button id="result-exit" type="button" class="quiet">Exit</button>
   </div>
 </div>
 
@@ -68,7 +70,6 @@
       <p id="account-status" class="menu-note"></p>
       <div class="btn-row">
         <button id="passkey-save" type="button" class="primary">Save with a passkey</button>
-        <button id="passkey-signin" type="button">Sign in with a passkey</button>
         <button id="passkey-add" type="button" hidden>Add another passkey</button>
         <button id="logout-btn" type="button" class="quiet" hidden>Log out</button>
       </div>
@@ -190,7 +191,7 @@
       <button id="ready-btn" type="button">I’m ready</button>
     </div>
     <div id="emote-bar" role="group" aria-label="Send a reaction"></div>
-    <button id="leave-btn" type="button" class="quiet">Leave room</button>
+    <button id="leave-btn" type="button" class="quiet" title="Leave the room">Exit</button>
   </div>
 </div>
 

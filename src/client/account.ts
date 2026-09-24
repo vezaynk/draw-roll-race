@@ -1,6 +1,10 @@
-// "Your player" in Options: a display name, and passkeys. Saving the player with a passkey
-// claims it on the server; signing in with a passkey on another device brings the same player
-// there. Logging out forgets everything on this device. See worker/auth.ts.
+// "Your player" in Options (and "Save your score" after a daily run): a display name, and one
+// button, "Save with a passkey". There is no separate "create account" and "sign in":
+//  - if the browser has a passkey for this site, using it makes this device that passkey's
+//    player, and the device's own anonymous player is remapped into it;
+//  - otherwise a new passkey is made for this device's player, which claims it.
+// Signed in, the button adds another passkey. Logging out forgets everything on this device.
+// See worker/auth.ts.
 import { browserSupportsWebAuthn, startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { byId } from './dom';
 import {
@@ -17,6 +21,19 @@ interface Me {
 
 let online = false;
 let busy = false;
+/** Using an existing passkey was just tried and none was picked: the next tap makes one. */
+let noExistingPasskey = false;
+const listeners: (() => void)[] = [];
+
+/** Called after this device saves or changes its player. */
+export function onAccountChange(listener: () => void): void {
+  listeners.push(listener);
+}
+
+/** Whether "Save with a passkey" can be offered here (online, passkeys supported, not saved). */
+export function canSave(): boolean {
+  return online && browserSupportsWebAuthn() && !save.signedIn;
+}
 
 function note(text: string, warning = false): void {
   const el = byId('account-note');
@@ -30,10 +47,9 @@ function render(): void {
   const supported = browserSupportsWebAuthn();
   byId<HTMLInputElement>('account-name').value = playerName();
   byId('account-status').textContent = save.signedIn
-    ? 'Your player is saved with a passkey. Sign in with it on any device to race as you.'
-    : 'Save your player with a passkey to keep your name and daily times on any device.';
+    ? 'Your player is saved with a passkey. Use it on any device to race as you.'
+    : 'Save with a passkey to keep your name and daily times on any device. Already have one? Use it the same way.';
   byId('passkey-save').hidden = save.signedIn || !supported;
-  byId('passkey-signin').hidden = save.signedIn || !supported;
   byId('passkey-add').hidden = !save.signedIn || !supported;
   byId('logout-btn').hidden = !save.signedIn;
   if (!supported) note('This browser doesn’t support passkeys.');
@@ -53,48 +69,68 @@ async function post<T>(path: string, data: unknown = {}): Promise<T> {
 /** The passkey prompt was dismissed: not an error worth showing. */
 const cancelled = (e: unknown) => e instanceof Error && e.name === 'NotAllowedError';
 
-async function run(task: () => Promise<void>): Promise<void> {
-  if (busy) return;
+/** Runs one passkey action. Returns the message to show, or throws. */
+async function run(task: () => Promise<string>, show = note): Promise<boolean> {
+  if (busy) return false;
   busy = true;
   note('');
   try {
-    await task();
+    show(await task());
+    listeners.forEach((listener) => listener());
+    return true;
   } catch (e) {
-    if (!cancelled(e)) note(e instanceof Error ? e.message : String(e), true);
+    if (!cancelled(e)) show(e instanceof Error ? e.message : String(e), true);
+    else if (noExistingPasskey) show('No passkey was saved. Tap again to make one.');
+    return false;
   } finally {
     busy = false;
     render();
   }
 }
 
-/** Creates a passkey for this player (or adds another one when signed in). */
-function savePasskey(): Promise<void> {
-  return run(async () => {
-    const adding = save.signedIn;
-    const name = playerName() || 'Runner';
-    const optionsJSON = await post<Parameters<typeof startRegistration>[0]['optionsJSON']>(
-      'register/options',
-      { player: save.player, name },
-    );
-    const response = await startRegistration({ optionsJSON });
-    const out = await post<{ hash: string; name: string }>('register/verify', { response });
-    becomePlayer(save.player, out.hash, out.name || name);
-    note(adding ? 'Added another passkey for your player.' : 'Saved. Your player now has a passkey.');
-  });
+/** Makes a new passkey for this device's player (claiming it, or adding one when signed in). */
+async function createPasskey(): Promise<string> {
+  const adding = save.signedIn;
+  const name = playerName() || 'Runner';
+  const optionsJSON = await post<Parameters<typeof startRegistration>[0]['optionsJSON']>(
+    'register/options',
+    { player: save.player, name },
+  );
+  const response = await startRegistration({ optionsJSON });
+  const out = await post<{ hash: string; name: string }>('register/verify', { response });
+  becomePlayer(save.player, out.hash, out.name || name);
+  noExistingPasskey = false;
+  return adding ? 'Added another passkey for your player.' : 'Saved. Your player now has a passkey.';
 }
 
-/** Signs in with a passkey: this device becomes that player. */
-function signIn(): Promise<void> {
+/** Uses a passkey the browser already has: this device becomes its player. */
+async function useExistingPasskey(): Promise<string> {
+  const optionsJSON = await post<Parameters<typeof startAuthentication>[0]['optionsJSON']>('login/options');
+  const response = await startAuthentication({ optionsJSON });
+  const out = await post<{ player: string; hash: string; name: string }>(
+    'login/verify',
+    { response, localPlayer: save.player },
+  );
+  becomePlayer(out.player, out.hash, out.name);
+  return `Saved. You’re playing as ${out.name || 'your player'} again.`;
+}
+
+/**
+ * "Save with a passkey": first offers the passkeys this browser has for the site; if none is
+ * used, makes a new one. (Browsers may drop the second prompt if too long passes after the tap;
+ * then the next tap goes straight to making one.)
+ */
+export function saveWithPasskey(show = note): Promise<boolean> {
   return run(async () => {
-    const optionsJSON = await post<Parameters<typeof startAuthentication>[0]['optionsJSON']>('login/options');
-    const response = await startAuthentication({ optionsJSON });
-    const out = await post<{ player: string; hash: string; name: string }>(
-      'login/verify',
-      { response, localPlayer: save.player },
-    );
-    becomePlayer(out.player, out.hash, out.name);
-    note(`Signed in as ${out.name || 'your player'}.`);
-  });
+    if (save.signedIn || noExistingPasskey) return createPasskey();
+    try {
+      return await useExistingPasskey();
+    } catch (e) {
+      if (!cancelled(e)) throw e;
+      noExistingPasskey = true;
+      return createPasskey();
+    }
+  }, show);
 }
 
 /** Logs out and forgets everything on this device; the next visit starts as a new player. */
@@ -103,7 +139,8 @@ function logOut(): Promise<void> {
     await post('logout');
     forgetEverything();
     window.location.reload();
-  });
+    return '';
+  }).then(() => {});
 }
 
 /** Checks the session with the server (it may have been ended on another device). */
@@ -134,9 +171,8 @@ export default function initAccount(): void {
     const name = (e.target as HTMLInputElement).value.trim().slice(0, 16);
     if (name) setPlayerName(name);
   });
-  byId('passkey-save').addEventListener('click', savePasskey);
-  byId('passkey-add').addEventListener('click', savePasskey);
-  byId('passkey-signin').addEventListener('click', signIn);
+  byId('passkey-save').addEventListener('click', () => saveWithPasskey());
+  byId('passkey-add').addEventListener('click', () => saveWithPasskey());
   byId('logout-btn').addEventListener('click', logOut);
   render();
 }

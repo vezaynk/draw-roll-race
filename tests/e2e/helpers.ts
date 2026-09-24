@@ -15,12 +15,14 @@ declare global {
         steps: number;
         finished: boolean;
         racing: boolean;
+        ghosts: unknown[];
         player: Runner | null;
         course: Course;
         recording: { inputs: RunInput[] } | null;
       };
       buildCourse: typeof buildCourse;
       RunReplay: typeof RunReplay;
+      submitDaily: (day: string, time: number, rec: { samples: unknown[]; limbs: unknown[]; inputs: RunInput[]; lastT: number }) => Promise<void>;
     };
   }
 }

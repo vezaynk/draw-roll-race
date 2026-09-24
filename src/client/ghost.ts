@@ -1,15 +1,13 @@
-// Recording runs, and racing see-through "ghosts": your best run on a course, and on the daily
-// course the day's leader (rebuilt by replaying their run with the game's own physics).
-import { CFG } from '../shared/config';
+// Recording runs, and replaying your best run on a course as a see-through "ghost". Only your
+// own runs come back as ghosts; other players' runs are never shown.
 import { round1 } from '../shared/geometry';
 import { decodeLimbs, encodeLimbs, packLimbs } from '../shared/limbs';
 import type { RunInput } from '../shared/replay';
-import { RunReplay } from '../shared/replay';
 import { createRunner } from '../shared/runner';
 import type {
-  Course, EncodedLimbs, Limbs, Runner,
+  EncodedLimbs, Limbs, Runner,
 } from '../shared/types';
-import { GHOST_COLOR, LEADER_COLOR } from './colors';
+import { GHOST_COLOR } from './colors';
 import { drawLabels, drawRunner, labelSpot } from './render/draw';
 import { readJson, writeJson } from './storage';
 
@@ -17,8 +15,6 @@ const STORAGE_KEY = 'draw-roll-race-ghosts';
 /** Courses kept, most recent first, so storage stays small. */
 const MAX_GHOSTS = 12;
 const SAMPLE_EVERY = 0.1;
-/** Longest run a ghost is rebuilt from. */
-const MAX_REPLAY_SECONDS = 300;
 
 /** [t, x, y, arm angle, leg angle] */
 export type Sample = [number, number, number, number, number];
@@ -42,8 +38,6 @@ interface StoredGhost {
 export interface Ghost extends StoredGhost {
   /** Shown above it while racing. */
   label: string;
-  /** The daily leader rather than your own best. */
-  leader: boolean;
   runner: Runner | null;
   limbsAt: number;
   cursor: number;
@@ -82,39 +76,7 @@ export function loadGhost(key: string): Ghost | null {
   const stored = loadAll()[key];
   if (!stored || !stored.samples || stored.samples.length < 2) return null;
   return {
-    ...stored, label: 'Your best', leader: false, runner: null, limbsAt: -1, cursor: 1,
-  };
-}
-
-/** A ghost made by replaying someone's recorded inputs (the daily leader's run). */
-export function replayGhost(course: Course, inputs: RunInput[], label: string): Ghost | null {
-  const samples: Sample[] = [];
-  const limbs: [number, EncodedLimbs][] = [];
-  let lastLimbs: Limbs | null = null;
-  let lastT = -SAMPLE_EVERY;
-  const replay = new RunReplay(course, inputs, Math.ceil(MAX_REPLAY_SECONDS / CFG.DT), (t, body, now) => {
-    if (now !== lastLimbs) {
-      lastLimbs = now;
-      limbs.push([round1(t), encodeLimbs(now)]);
-    }
-    if (t - lastT < SAMPLE_EVERY) return;
-    lastT = t;
-    samples.push([round1(t), round1(body.x), round1(body.y),
-      round1(body.joints[0].angle), round1(body.joints[1].angle)]);
-  });
-  replay.advance();
-  if (!replay.finished || samples.length < 2) return null;
-  if (limbs.length) limbs[0][0] = 0;
-  return {
-    time: replay.time,
-    samples,
-    limbs,
-    savedAt: 0,
-    label,
-    leader: true,
-    runner: null,
-    limbsAt: -1,
-    cursor: 1,
+    ...stored, label: 'Your best', runner: null, limbsAt: -1, cursor: 1,
   };
 }
 
@@ -163,7 +125,7 @@ export function drawGhost(g: CanvasRenderingContext2D, ghost: Ghost, t: number):
   });
   if (current !== ghost.limbsAt || !ghost.runner) {
     ghost.limbsAt = current;
-    ghost.runner = createRunner(decodeLimbs(ghost.limbs[current][1]), ghost.leader ? LEADER_COLOR : GHOST_COLOR);
+    ghost.runner = createRunner(decodeLimbs(ghost.limbs[current][1]), GHOST_COLOR);
   }
   const { runner } = ghost;
   runner.x = pose.x;
@@ -171,6 +133,5 @@ export function drawGhost(g: CanvasRenderingContext2D, ghost: Ghost, t: number):
   runner.joints[0].angle = pose.a;
   runner.joints[1].angle = pose.b;
   drawRunner(g, runner, 0.4);
-  const color = ghost.leader ? 'rgba(150,110,20,0.85)' : 'rgba(60,66,80,0.75)';
-  drawLabels(g, [{ text: ghost.label, color, ...labelSpot(runner) }]);
+  drawLabels(g, [{ text: ghost.label, color: 'rgba(60,66,80,0.75)', ...labelSpot(runner) }]);
 }

@@ -1,6 +1,7 @@
-// Players and passkeys: the server only shows hashes of player IDs; saving a player with a
-// passkey claims it; signing in with that passkey elsewhere brings the same player (and moves
-// that device's own daily scores over); logging out forgets everything on the device.
+// Players and passkeys: the server only shows hashes of player IDs. One button, "Save with a
+// passkey": with no passkey yet it makes one (claiming the player); with an existing passkey it
+// makes this device that passkey's player (remapping the device's own player into it). Logging
+// out forgets everything on the device.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
 import type { Browser, CDPSession, Page } from 'playwright';
@@ -72,7 +73,7 @@ async function openAccount(page: Page): Promise<void> {
   await page.waitForSelector('#account', { state: 'visible' });
 }
 
-test('passkeys: save a player, sign in on another device, log out', async () => {
+test('passkeys: one button saves a new player or brings back an existing one; log out', async () => {
   const { day } = await (await fetch(`${BASE}api/daily`)).json() as { day: string };
   const yesterday = new Date(Date.parse(`${day}T00:00:00Z`) - 86400000).toISOString().slice(0, 10);
 
@@ -91,9 +92,11 @@ test('passkeys: save a player, sign in on another device, log out', async () => 
   assert.ok(parsed.top.every((r) => /^[0-9a-f]{32}$/.test(r.hash)), 'rows carry hashes');
   assert.ok(parsed.you, 'finds your own entry by hash');
 
+  // No passkey exists yet, so the button makes one.
   await openAccount(a.page);
   await a.page.click('#passkey-save');
-  await waitForText(a.page, '#account-status', /saved with a passkey/i, 10000);
+  await waitForText(a.page, '#account-status', /saved with a passkey/i, 15000);
+  assert.match(await a.page.locator('#account-note').innerText(), /now has a passkey/i);
   assert.equal((await saved(a.page)).signedIn, true);
 
   // Now the ID alone is no longer enough to post as Ana.
@@ -117,13 +120,15 @@ test('passkeys: save a player, sign in on another device, log out', async () => 
   assert.equal(boRun.status, 200);
   const boTime = (JSON.parse(boRun.body) as { time: number }).time;
 
-  // The passkey syncs to device B (as it would through a password manager); signing in there
-  // brings Ana's player, and B's run from yesterday moves over to her.
+  // The passkey syncs to device B (as it would through a password manager). The same button
+  // there uses it: B becomes Ana's player, and B's run from yesterday is remapped to her.
   const { credentials } = await a.cdp.send('WebAuthn.getCredentials', { authenticatorId: a.authenticatorId });
   await b.cdp.send('WebAuthn.addCredential', { authenticatorId: b.authenticatorId, credential: credentials[0] });
   await openAccount(b.page);
-  await b.page.click('#passkey-signin');
-  await waitForText(b.page, '#account-status', /saved with a passkey/i, 10000);
+  assert.equal(await b.page.locator('#passkey-signin').count(), 0, 'no separate sign-in button');
+  await b.page.click('#passkey-save');
+  await waitForText(b.page, '#account-status', /saved with a passkey/i, 15000);
+  assert.match(await b.page.locator('#account-note').innerText(), /playing as Ana again/i);
   const onB = await saved(b.page);
   assert.equal(onB.player, ana.player, 'same player on the second device');
   assert.equal(onB.playerHash, anaHash);
@@ -158,4 +163,26 @@ test('passkeys: save a player, sign in on another device, log out', async () => 
 
   await a.page.context().close();
   await b.page.context().close();
+});
+
+test('after a daily run, "Save your score" saves the player with a passkey', async () => {
+  const { day, stage } = await (await fetch(`${BASE}api/daily`)).json() as { day: string; stage: number };
+  const c = await device(browser, 'Cy');
+  const cy = await saved(c.page);
+  const run = botRun(buildCourse(stage));
+  // Show the results card for a daily run (as the game does when you cross the line).
+  await c.page.evaluate(async ({ d, time, inputs }) => {
+    document.getElementById('result')!.hidden = false;
+    await window.drr.submitDaily(d, time, {
+      samples: [], limbs: [], inputs, lastT: 0,
+    });
+  }, { d: day, time: run.time, inputs: run.inputs });
+  await c.page.waitForSelector('#save-score', { state: 'visible' });
+  await c.page.click('#save-score');
+  await c.page.waitForSelector('#save-score', { state: 'hidden', timeout: 15000 });
+  assert.match(await c.page.locator('#lb-note').innerText(), /now has a passkey/i);
+  const after = await saved(c.page);
+  assert.equal(after.signedIn, true);
+  assert.equal(after.player, cy.player, 'a new passkey keeps this device’s player');
+  await c.page.context().close();
 });

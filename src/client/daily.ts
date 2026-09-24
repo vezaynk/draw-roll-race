@@ -1,10 +1,7 @@
-// Sending daily runs, showing the daily leaderboard on the results card, and the day's leader
-// as a ghost to race against.
-import buildCourse from '../shared/course/build';
-import { dailyStage } from '../shared/course/stages';
-import type { RunInput } from '../shared/replay';
-import { replayGhost } from './ghost';
-import type { Ghost, Recording } from './ghost';
+// Sending daily runs, showing the daily leaderboard on the results card, and naming the day's
+// leader.
+import { canSave, saveWithPasskey } from './account';
+import type { Recording } from './ghost';
 import { byId, el, ordinal } from './dom';
 import { myHash, playerName, save } from './storage';
 
@@ -20,47 +17,30 @@ interface Leader {
   name: string;
   time: number;
   hash: string;
-  inputs: RunInput[];
 }
 
-/** The day's leader as a ghost (null when you lead, or nobody has a replayable run yet). */
-let leader: { day: string; ghost: Ghost | null } | null = null;
-
 /**
- * Fetches the day's fastest run and rebuilds it as a ghost by replaying it. Returns a line
- * describing the leader, or null.
+ * Names the day's fastest runner. Their run itself is never sent (it would give away their
+ * strategy), so the daily course only ever shows your own ghost. Returns a line to show, or null.
  */
 export async function loadLeader(day: string): Promise<string | null> {
   try {
     const res = await fetch(`/api/daily/leader?day=${day}`, { cache: 'no-store' });
     if (!res.ok) return null;
-    const data = await res.json() as { leader: Leader | null };
-    const top = data.leader;
-    if (!top) {
-      leader = { day, ghost: null };
-      return null;
-    }
-    const you = top.hash === await myHash();
-    const ghost = you ? null : replayGhost(buildCourse(dailyStage(day)), top.inputs, `Leader: ${top.name}`);
-    leader = { day, ghost };
-    return you
-      ? `You lead today (${top.time.toFixed(2)} s).`
-      : `Race today’s leader, ${top.name} (${top.time.toFixed(2)} s).`;
+    const { leader } = await res.json() as { leader: Leader | null };
+    if (!leader) return null;
+    return leader.hash === await myHash()
+      ? `You lead today (${leader.time.toFixed(2)} s).`
+      : `Today’s leader: ${leader.name} (${leader.time.toFixed(2)} s).`;
   } catch {
     return null;
   }
 }
 
-/** A fresh copy of the day's leader ghost, if there is one. */
-export function leaderGhost(day: string): Ghost | null {
-  if (leader?.day !== day || !leader.ghost) return null;
-  return {
-    ...leader.ghost, runner: null, limbsAt: -1, cursor: 1,
-  };
-}
-
-function note(text: string): void {
-  byId('lb-note').textContent = text;
+function note(text: string, warning = false): void {
+  const el = byId('lb-note');
+  el.textContent = text;
+  el.classList.toggle('warn', warning);
 }
 
 /** A spinner before the note while the server checks your run. */
@@ -147,8 +127,31 @@ export default async function submitDaily(
     }
     // You may have taken the lead (or someone else has since).
     if (res.ok) await loadLeader(day);
+    // Not saved yet: offer to keep this score with a passkey.
+    if (res.ok && canSave()) {
+      const button = byId('save-score');
+      button.hidden = false;
+      button.dataset.day = day;
+    }
   } catch {
     checking(false);
     note('The leaderboard needs the online version of the game.');
   }
+}
+
+/** "Save your score": saves (or finds) this player's passkey, then shows the board as that player. */
+export function initSaveScore(): void {
+  const button = byId<HTMLButtonElement>('save-score');
+  button.addEventListener('click', async () => {
+    const { day } = button.dataset;
+    if (!day) return;
+    button.disabled = true;
+    const saved = await saveWithPasskey((text, warning) => note(text, warning));
+    button.disabled = false;
+    if (!saved) return;
+    button.hidden = true;
+    const message = byId('lb-note').textContent ?? '';
+    await showLeaderboard(day, true);
+    note(`${message} ${byId('lb-note').textContent}`.trim());
+  });
 }
