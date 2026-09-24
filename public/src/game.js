@@ -165,7 +165,7 @@
     $('stage-label').textContent = stageName(state.stage);
     updateStageButton();
   }
-  function stageName(n) { return n >= D.RANDOM_BASE ? 'Random course' : n < D.STAGES.length ? 'Stage ' + (n + 1) + ' / ' + D.STAGES.length : 'Endless ' + (n - D.STAGES.length + 1); }
+  function stageName(n) { return D.TEST_STAGES[n] ? 'Test course' : n >= D.RANDOM_BASE ? 'Random course' : n < D.STAGES.length ? 'Stage ' + (n + 1) + ' / ' + D.STAGES.length : 'Endless ' + (n - D.STAGES.length + 1); }
   function updateHud() {
     const c = state.course, span = c.finishX - c.startX;
     for (const who of ['cpu', 'player']) {
@@ -219,7 +219,10 @@
     state.cpu = null; state.cpuDriver = null;
     if (opts.cpu !== false) {
       // A new personality every race, so the CPU never plays the same way twice.
-      state.cpuDriver = D.createCpu(c, { seed: (Math.random() * 1e9) | 0, difficulty: SOLO_CPU, color: COLORS.cpu });
+      state.cpuDriver = D.createCpu(c, {
+        seed: (Math.random() * 1e9) | 0, difficulty: SOLO_CPU, color: COLORS.cpu,
+        onSwap: (limbs, pose, lost, old) => { if (lost && old) spawnShards(old, lost); },
+      });
       state.cpu = state.cpuDriver.runner;
     }
     state.cpuTime = null;
@@ -270,6 +273,8 @@
       acc -= CFG.DT;
       state.time += CFG.DT;
       D.step(state.course, state.player, CFG.DT);
+      const broken = D.shatter(state.course, state.player, state.limbs);
+      if (broken) onShatter(broken);
       stepCpu();
       if (hooks.onStep) hooks.onStep(CFG.DT, state.time);
       if (state.player.x >= state.course.finishX) { finish(); break; }
@@ -283,6 +288,20 @@
     updateHud();
     render();
     if (state.racing) rafId = requestAnimationFrame(frame);
+  }
+
+  // Spikes broke one or both limbs: throw the pieces, clear them from the pad, ask for a redraw.
+  const LIMB_NAMES = { arm: 'Arms', leg: 'Legs' };
+  function onShatter(broken) {
+    spawnShards(state.player, broken.lost);
+    state.limbs = broken.limbs;
+    state.player = broken.runner;
+    renderPad();
+    const what = broken.lost.map(k => LIMB_NAMES[k]).join(' and ');
+    toast(what + ' shattered!', 1200);
+    showHint('Spikes broke your ' + what.toLowerCase() + '. Draw new ones.', 2600);
+    sfx('shatter');
+    if (hooks.onLimbs) hooks.onLimbs(state.limbs, broken.lost);
   }
 
   function finish() {
@@ -400,6 +419,65 @@
     g.closePath();
   }
 
+  // ---------------- Shattered limb pieces ----------------
+  const shards = [];
+  let lastShardTs = 0;
+  function spawnShards(b, kinds) {
+    for (const j of b.joints) {
+      if (!kinds.includes(j.kind)) continue;
+      const c = Math.cos(j.angle), s = Math.sin(j.angle);
+      for (const ln of j.lines) {
+        for (let i = 1; i < ln.length; i += 2) {
+          const p = ln[i - 1], q = ln[i];
+          const ax = b.x + j.ox + p.x * c - p.y * s, ay = b.y + j.oy + p.x * s + p.y * c;
+          const bx = b.x + j.ox + q.x * c - q.y * s, by = b.y + j.oy + q.x * s + q.y * c;
+          shards.push({
+            x: (ax + bx) / 2, y: (ay + by) / 2, len: Math.hypot(bx - ax, by - ay),
+            ang: Math.atan2(by - ay, bx - ax), va: (Math.random() - 0.5) * 16,
+            vx: b.vx * 0.5 + (Math.random() - 0.5) * 260, vy: -120 - Math.random() * 220,
+            color: b.color, life: 1.1,
+          });
+        }
+      }
+    }
+    if (shards.length > 400) shards.splice(0, shards.length - 400);
+  }
+  function drawShards(g) {
+    const now = performance.now();
+    const dt = lastShardTs ? Math.min(0.05, (now - lastShardTs) / 1000) : 0;
+    lastShardTs = now;
+    g.lineCap = 'round';
+    for (let i = shards.length - 1; i >= 0; i--) {
+      const p = shards[i];
+      p.life -= dt;
+      if (p.life <= 0) { shards.splice(i, 1); continue; }
+      p.vy += CFG.G * 0.6 * dt; p.x += p.vx * dt; p.y += p.vy * dt; p.ang += p.va * dt;
+      const dx = Math.cos(p.ang) * p.len / 2, dy = Math.sin(p.ang) * p.len / 2;
+      g.globalAlpha = Math.min(1, p.life * 1.5);
+      g.strokeStyle = COLORS.ink; g.lineWidth = CFG.R * 2 + 3;
+      g.beginPath(); g.moveTo(p.x - dx, p.y - dy); g.lineTo(p.x + dx, p.y + dy); g.stroke();
+      g.strokeStyle = p.color; g.lineWidth = CFG.R * 2;
+      g.beginPath(); g.moveTo(p.x - dx, p.y - dy); g.lineTo(p.x + dx, p.y + dy); g.stroke();
+    }
+    g.globalAlpha = 1;
+  }
+
+  // Sound effects are filled in by sound.js when it is loaded.
+  function sfx(name) { if (hooks.sfx) hooks.sfx(name); }
+
+  function spikeRow(g, from, to, baseY, dir) {
+    // dir -1: spikes point up from baseY(x); dir 1: spikes hang down from baseY(x)
+    const w = 8, h = CFG.SPIKE_H;
+    g.fillStyle = '#c9ced8'; g.strokeStyle = COLORS.ink; g.lineWidth = 1.5; g.lineJoin = 'miter';
+    for (let x = from; x + w <= to + 0.1; x += w) {
+      const y0 = baseY(x), y1 = baseY(x + w);
+      g.beginPath();
+      g.moveTo(x, y0); g.lineTo(x + w / 2, (y0 + y1) / 2 + dir * h); g.lineTo(x + w, y1);
+      g.closePath(); g.fill(); g.stroke();
+    }
+    g.lineJoin = 'round';
+  }
+
   function render() {
     const W = world.width, H = world.height;
     const c = state.course;
@@ -483,7 +561,41 @@
         for (let x = s.from + 22 - off; x < s.to - 4; x += 22) {
           ctx.beginPath(); ctx.moveTo(x + 4, gy + 1.5); ctx.lineTo(x, gy + 4); ctx.lineTo(x + 4, gy + 6.5); ctx.stroke();
         }
-      } else if (s.type === 'tunnel' || s.type === 'crawl') {
+      } else if (s.type === 'spikepit') {
+        // spikes along the pit floor
+        const S = CFG.STEP;
+        let i = Math.floor(s.from / S);
+        while (i < c.surf.length && !(c.surf[i] && c.surf[i].spikes)) i++;
+        const a = i * S;
+        while (i < c.surf.length && c.surf[i] && c.surf[i].spikes) i++;
+        spikeRow(ctx, a, i * S, x => D.groundAt(c, x), -1);
+      } else if (s.type === 'wind') {
+        ctx.fillStyle = 'rgba(255,255,255,0.08)';
+        ctx.fillRect(s.from, cam.y - 20, s.to - s.from, VH + 40);
+        ctx.strokeStyle = 'rgba(255,255,255,0.7)'; ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+        const force = -D.zoneAt(c, s.from + 1).wind;
+        for (let k = 0; k < 18; k++) {
+          const span = s.to - s.from;
+          const x = s.to - (((k * 97 + state.time * force * 0.9) % span) + span) % span;
+          const y = D.groundAt(c, x) - 16 - ((k * 37) % 90);
+          ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 26, y); ctx.stroke();
+        }
+      } else if (s.type === 'lowgrav') {
+        ctx.fillStyle = 'rgba(150,110,230,0.12)';
+        ctx.fillRect(s.from, cam.y - 20, s.to - s.from, VH + 40);
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        for (let k = 0; k < 20; k++) {
+          const x = s.from + ((k * 131) % (s.to - s.from));
+          const y = D.groundAt(c, x) - 20 - ((k * 53 + state.time * 12) % 140);
+          ctx.fillRect(x, y, 2, 2);
+        }
+      } else if (s.type === 'bounce') {
+        ctx.lineWidth = 5; ctx.lineCap = 'butt';
+        for (let x = s.from; x < s.to; x += 12) {
+          ctx.strokeStyle = (Math.floor((x - s.from) / 12) % 2) ? '#f2c14e' : COLORS.ink;
+          ctx.beginPath(); ctx.moveTo(x, D.groundAt(c, x) + 2.5); ctx.lineTo(Math.min(s.to, x + 12), D.groundAt(c, Math.min(s.to, x + 12)) + 2.5); ctx.stroke();
+        }
+      } else if (s.type === 'tunnel' || s.type === 'crawl' || s.type === 'spikeroof') {
         const S = CFG.STEP;
         let i = Math.floor(s.from / S);
         while (i < c.ceil.length && c.ceil[i] === -Infinity) i++;
@@ -492,8 +604,11 @@
         const b = i * S, cy = D.ceilAt(c, a + 1);
         ctx.fillStyle = COLORS.ground;
         ctx.fillRect(a, cam.y - 20, b - a, cy - cam.y + 20);
-        ctx.fillStyle = '#f2c14e';
-        for (let x = a; x < b; x += 24) ctx.fillRect(x, cy - 5, 12, 5);
+        if (s.type === 'spikeroof') spikeRow(ctx, a, b, () => cy, 1);
+        else {
+          ctx.fillStyle = '#f2c14e';
+          for (let x = a; x < b; x += 24) ctx.fillRect(x, cy - 5, 12, 5);
+        }
       }
     }
 
@@ -513,6 +628,7 @@
     if (state.cpu) drawRunner(ctx, state.cpu, 0.85);
     if (hooks.drawWorld) hooks.drawWorld(ctx);
     if (state.player) drawRunner(ctx, state.player, 1);
+    drawShards(ctx);
 
     // water and mud drawn over the runners
     for (const s of c.sections) {
@@ -537,7 +653,7 @@
   // ---------------- API for online.js ----------------
   window.DRRGame = {
     state, hooks, COLORS,
-    toast, showHint, render, renderPad, updateHud, drawRunner, stageName,
+    toast, showHint, render, renderPad, updateHud, drawRunner, stageName, spawnShards, sfx,
     resetStage, startRace, updateStageButton,
     setStage(n) { state.stage = n; },
     stopRace() { state.racing = false; state.countdownEnd = 0; cancelAnimationFrame(rafId); updateStageButton(); },
@@ -546,6 +662,9 @@
   };
 
   // ---------------- Boot ----------------
+  // ?stage=N opens a stage directly (handy for testing a course).
+  const askedStage = parseInt(new URLSearchParams(location.search).get('stage'), 10);
+  if (Number.isInteger(askedStage) && askedStage >= 0) { state.stage = askedStage; state.course = D.buildCourse(askedStage); }
   buildProgress();
   renderPad();
   resize();

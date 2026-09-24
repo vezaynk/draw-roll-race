@@ -19,6 +19,9 @@
     SPACING: 9,         // sample spacing along strokes (pad units)
     START_X: 120,
     CLEARANCE: 76,      // tunnel height
+    SPIKE_H: 12,        // how far spikes stick up (or down, on a ceiling)
+    IMMUNE: 1.0,        // seconds new limbs are safe from spikes after a redraw
+    BOUNCE: 0.8,        // restitution of bounce pads
   };
 
   // ---------------- Figure template (pad coordinates, 320x200) ----------------
@@ -83,6 +86,19 @@
       gen: (r, L) => { const len = rint(r, 420, 560); return { len, rise: Math.round(len * rnum(r, 0.13, 0.15 + 0.04 * L)) }; } },
     mud:      { label: 'Mud Pit', pose: 'stilts', def: { len: 420, d: 60 },
       gen: (r, L) => ({ len: rint(r, 300, 360 + 100 * L), d: rint(r, 45, 50 + 12 * L) }) },
+    // Spikes shatter whichever limb touches them. Long spokes vault the pit; a wheel falls in.
+    spikepit: { label: 'Spike Pit', pose: 'stilts', def: { w: 84, d: 34 },
+      gen: (r, L) => ({ w: rint(r, 64, 72 + 18 * L), d: rint(r, 28, 30 + 8 * L) }) },
+    // Spikes on a low roof: tall limbs (long arms) shatter; a normal wheel fits underneath.
+    spikeroof: { label: 'Spiked Ceiling', def: { len: 300, clear: 92 },
+      gen: (r, L) => ({ len: rint(r, 220, 260 + 120 * L), clear: rint(r, 96 - 6 * L, 104) }) },
+    wind:     { label: 'Headwind', def: { len: 500, force: 320 },
+      gen: (r, L) => ({ len: rint(r, 380, 480 + 140 * L), force: rint(r, 220, 280 + 140 * L) }) },
+    // Floaty: one wide crater, so runners sail across it in long arcs.
+    lowgrav:  { label: 'Low Gravity', def: { len: 520, grav: 0.35, dh: 45 },
+      gen: (r, L) => { const len = rint(r, 440, 620); return { len, grav: rnum(r, 0.3, 0.45), dh: Math.round(len * rnum(r, 0.06, 0.08 + 0.03 * L)) }; } },
+    bounce:   { label: 'Bounce Pads', def: { len: 420, amp: 10 },
+      gen: (r, L) => ({ len: rint(r, 300, 360 + 120 * L), amp: rint(r, 6, 8 + 6 * L) }) },
   };
   function rnum(r, a, b) { return a + (b - a) * r(); }
   function rint(r, a, b) { return Math.round(rnum(r, a, b)); }
@@ -94,6 +110,11 @@
   ];
   // Stage numbers from here up are single random courses (online "Random course").
   const RANDOM_BASE = 1000;
+  // Short fixed courses for automated tests (rooms only accept them when the server allows it).
+  const TEST_STAGES = {
+    990: ['bumps'],
+    991: ['spikepit', 'spikeroof', 'wind', 'lowgrav', 'bounce'],
+  };
 
   // Difficulty level of a generated stage: endless mode ramps up; random courses are mid-to-hard.
   function stageLevel(n) {
@@ -104,6 +125,7 @@
   // The sections of stage n, each { type, p } with its sizes.
   function stageSections(n) {
     if (n < STAGES.length) return STAGES[n].map(type => ({ type, p: SECTIONS[type].def }));
+    if (TEST_STAGES[n]) return TEST_STAGES[n].map(type => ({ type, p: SECTIONS[type].def }));
     const rand = rng(hashSeed('course' + n));
     const L = stageLevel(n);
     const keys = Object.keys(SECTIONS);
@@ -125,10 +147,10 @@
 
   function buildCourse(stageIndex) {
     const S = CFG.STEP;
-    const ground = [], ceil = [], fluid = [], surf = [];
+    const ground = [], ceil = [], fluid = [], surf = [], zone = [];
     const sections = [], plan = [{ x: -Infinity, pose: 'wheel' }];
     let x = 0, y = 400;
-    let curSurf = null, curFluid = null;
+    let curSurf = null, curFluid = null, curZone = null;
 
     // Append `len` world units of terrain; f(t) gives ground height at local offset t.
     function seg(len, f, c) {
@@ -139,6 +161,7 @@
         ceil.push(c ? c(t) : -Infinity);
         fluid.push(curFluid);
         surf.push(curSurf);
+        zone.push(curZone);
       }
       x += n * S;
     }
@@ -203,6 +226,37 @@
         const y0 = y; curSurf = { mu: 0.3 };
         seg(p.len, t => y0 - p.rise * t / p.len); curSurf = null; y -= p.rise;
       },
+      spikepit(p) {
+        const y0 = y;
+        flat(80);
+        seg(10, t => y0 + p.d * t / 10);
+        curSurf = { spikes: true };
+        seg(p.w, () => y0 + p.d);
+        curSurf = null;
+        seg(10, t => y0 + p.d * (1 - t / 10));
+        flat(80);
+      },
+      spikeroof(p) {
+        const y0 = y;
+        flat(60);
+        curZone = { roofSpikes: true };
+        seg(p.len, t => y0 - 4 * (1 - Math.cos(2 * Math.PI * t / 60)) / 2, () => y0 - p.clear);
+        curZone = null;
+        flat(60);
+      },
+      wind(p) { curZone = { wind: -p.force }; flat(p.len); curZone = null; },
+      lowgrav(p) {
+        const y0 = y, L = p.len;
+        curZone = { grav: p.grav };
+        seg(L, t => y0 + p.dh * (1 - Math.cos(2 * Math.PI * t / L)) / 2);
+        curZone = null;
+      },
+      bounce(p) {
+        const y0 = y;
+        curSurf = { bounce: CFG.BOUNCE };
+        seg(p.len, t => y0 - p.amp * (1 - Math.cos(2 * Math.PI * t / 90)) / 2);
+        curSurf = null;
+      },
       mud(p) {
         const y0 = y, d = p.d;
         curFluid = { level: y0, kind: 'mud' };
@@ -234,7 +288,7 @@
     flat(1000);
 
     const ceilLine = ceil.map(v => (v === -Infinity ? -5000 : v));
-    return { ground, ceil, ceilLine, fluid, surf, sections, plan, finishX, startX: CFG.START_X, length: x };
+    return { ground, ceil, ceilLine, fluid, surf, zone, sections, plan, finishX, startX: CFG.START_X, length: x };
   }
 
   // ---------------- Course queries ----------------
@@ -243,6 +297,7 @@
   const ceilAt = (c, x) => c.ceil[idx(c, x)];
   const fluidAt = (c, x) => c.fluid[idx(c, x)];
   const surfAt = (c, x) => c.surf[idx(c, x)];
+  const zoneAt = (c, x) => c.zone[idx(c, x)];
 
   // Nearest point on the polyline through heights h[] (x = i*STEP) around px.
   function nearest(h, px, py) {
@@ -328,6 +383,8 @@
       head: Object.assign(toBody(FIG.head), { r: FIG.head.r * S }),
       joints, mass, invM: 1 / mass, nPts: mass,
       x: 0, y: 0, vx: 0, vy: 0,
+      hit: { arm: false, leg: false }, // limbs that touched spikes during the last step
+      immune: 0,                        // seconds left before spikes can shatter limbs
     };
   }
 
@@ -356,6 +413,7 @@
     const b = createRunner(limbs, old.color, old.speed);
     b.vx = old.vx; b.vy = old.vy;
     b.joints.forEach((j, i) => { j.angle = old.joints[i].angle; j.w = old.joints[i].w; });
+    b.immune = CFG.IMMUNE;
     settle(course, b, old.x, old.y);
     return b;
   }
@@ -369,7 +427,8 @@
     const vn = ux * nx + uy * ny;
     if (vn < 0) {
       const rn = rx * ny - ry * nx;
-      const jn = -(1 + CFG.REST) * vn / (b.invM + rn * rn * invI);
+      const rest = s && s.bounce ? s.bounce : CFG.REST;
+      const jn = -(1 + rest) * vn / (b.invM + rn * rn * invI);
       b.vx += jn * nx * b.invM; b.vy += jn * ny * b.invM;
       if (j) j.w += rn * jn * invI;
 
@@ -406,9 +465,19 @@
         }
         impulse(b, j, px, py, nx, ny, pen, null);
       }
+      // Roof spikes hang SPIKE_H below the ceiling.
+      if (j && b.immune <= 0 && py - R < cy + CFG.SPIKE_H) {
+        const z = zoneAt(course, px);
+        if (z && z.roofSpikes) b.hit[j.kind] = true;
+      }
     }
     // Ground
     const gy = groundAt(course, px);
+    // Floor spikes stick up SPIKE_H above the ground: a limb point that low shatters.
+    if (j && b.immune <= 0 && py + R > gy - CFG.SPIKE_H) {
+      const sf = surfAt(course, px);
+      if (sf && sf.spikes) b.hit[j.kind] = true;
+    }
     if (py + R + 4 < gy) return;
     const inside = py > gy;
     const q = nearest(course.ground, px, py);
@@ -423,7 +492,11 @@
   }
 
   function step(course, b, dt) {
-    b.vy += CFG.G * dt;
+    b.hit.arm = b.hit.leg = false;
+    if (b.immune > 0) b.immune -= dt;
+    const z = zoneAt(course, b.x);
+    b.vy += CFG.G * (z && z.grav ? z.grav : 1) * dt;
+    if (z && z.wind) b.vx += z.wind * dt;
     b.vx *= 1 - CFG.AIR * dt;
     const wmax = CFG.WMAX * b.speed;
     for (const j of b.joints) {
@@ -467,6 +540,18 @@
     climber: { arm: [[FIG.shoulder, { x: FIG.shoulder.x + 100, y: FIG.shoulder.y }]], leg: [halfRing(FIG.hip, 24)] },
   };
 
+  // Remove the limbs a runner hit spikes with. Returns the new limbs and runner, or null if nothing broke.
+  function shatter(course, b, limbs) {
+    if (!b.hit.arm && !b.hit.leg) return null;
+    const next = { arm: b.hit.arm ? [] : limbs.arm, leg: b.hit.leg ? [] : limbs.leg };
+    const lost = [];
+    if (b.hit.arm && limbs.arm.length) lost.push('arm');
+    if (b.hit.leg && limbs.leg.length) lost.push('leg');
+    if (!lost.length) return null;
+    const runner = swapLimbs(course, b, next);
+    return { limbs: next, runner, lost };
+  }
+
   function planIndex(course, x) {
     let k = 0;
     for (let i = 0; i < course.plan.length; i++) if (x >= course.plan[i].x) k = i;
@@ -474,9 +559,9 @@
   }
 
   root.DRR = {
-    CFG, FIG, PAD_W, PAD_H, SECTIONS, STAGES, POSES, RANDOM_BASE,
+    CFG, FIG, PAD_W, PAD_H, SECTIONS, STAGES, POSES, RANDOM_BASE, TEST_STAGES,
     rng, hashSeed, halfRing,
-    buildCourse, stageSections, stageLevel, groundAt, ceilAt, fluidAt, surfAt,
-    createRunner, swapLimbs, settle, step, eachPoint, planIndex, resample,
+    buildCourse, stageSections, stageLevel, groundAt, ceilAt, fluidAt, surfAt, zoneAt,
+    createRunner, swapLimbs, settle, step, eachPoint, planIndex, resample, shatter,
   };
 })(typeof window !== 'undefined' ? window : globalThis);

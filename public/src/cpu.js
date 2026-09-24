@@ -60,14 +60,14 @@
       pose: 'wheel', limbs: P.shapes.wheel,
       runner: D.createRunner(P.shapes.wheel, opts.color, P.speed),
       finishTime: null,
-      planK: 0, pending: null, progressX: -Infinity, progressT: 0, recover: 0,
+      planK: 0, pending: null, redrawAt: null, progressX: -Infinity, progressT: 0, recover: 0,
       step, setPose, placeAt,
     };
     D.settle(course, cpu.runner, course.startX);
     cpu.progressX = cpu.runner.x;
 
-    function setPose(pose) {
-      if (pose === cpu.pose) return;
+    function setPose(pose, force) {
+      if (pose === cpu.pose && !force) return;
       cpu.pose = pose;
       cpu.limbs = P.shapes[pose];
       cpu.runner = D.swapLimbs(course, cpu.runner, cpu.limbs);
@@ -88,6 +88,20 @@
     function step(dt, t) {
       if (cpu.finishTime !== null) return;
       D.step(course, cpu.runner, dt);
+
+      // Spikes took a limb: carry on without it, then redraw the same shape after reacting.
+      const broken = D.shatter(course, cpu.runner, cpu.limbs);
+      if (broken) {
+        const old = cpu.runner;
+        cpu.limbs = broken.limbs;
+        cpu.runner = broken.runner;
+        if (opts.onSwap) opts.onSwap(cpu.limbs, cpu.pose, broken.lost, old);
+        cpu.redrawAt = t + pick(r, P.react);
+      }
+      if (cpu.redrawAt !== null && t >= cpu.redrawAt) {
+        cpu.redrawAt = null;
+        setPose(cpu.pose, true);
+      }
       const x = cpu.runner.x;
 
       // Notice the next section a little before reaching it, then react after a delay.
