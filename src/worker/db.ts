@@ -30,6 +30,12 @@ const TABLES = [
   'CREATE INDEX IF NOT EXISTS runs_by_hash ON runs (hash, id)',
   'CREATE INDEX IF NOT EXISTS runs_by_player ON runs (player)',
   'CREATE TABLE IF NOT EXISTS run_times (bucket INTEGER PRIMARY KEY, n INTEGER NOT NULL)',
+  // Speed through every section of every run, and how many passes of each type were how fast.
+  `CREATE TABLE IF NOT EXISTS run_sections (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT NOT NULL, type TEXT NOT NULL, speed REAL NOT NULL)`,
+  'CREATE INDEX IF NOT EXISTS run_sections_by_hash ON run_sections (hash, type, id)',
+  `CREATE TABLE IF NOT EXISTS section_speeds (
+    type TEXT NOT NULL, bucket INTEGER NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (type, bucket))`,
 ];
 
 /** Columns added to tables after they were first made: [table, column, type]. */

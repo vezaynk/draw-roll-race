@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  MIN_RUNS, bucketOf, percentile,
+  MIN_RUNS, bucketOf, percentile, sectionPercentile, speedBucket,
 } from '../../src/shared/stats';
 import type { TimeCounts } from '../../src/shared/stats';
 
@@ -50,4 +50,23 @@ test('your percentile averages your runs', () => {
 test('everyone at the same time is the 50th percentile', () => {
   const all = runs(MIN_RUNS, 12.3);
   assert.equal(percentile(all, countsOf(all)), 50);
+});
+
+test('on sections, faster speeds beat more of the others', () => {
+  const speedCounts = (speeds: number[]): TimeCounts => {
+    const counts = new Map<number, number>();
+    speeds.forEach((v) => counts.set(speedBucket(v), (counts.get(speedBucket(v)) ?? 0) + 1));
+    return [...counts];
+  };
+  const others = [100, 120, 150, 180, 200, 220, 250, 280, 300, 350];
+  const quick = runs(MIN_RUNS, 260);
+  const slow = runs(MIN_RUNS, 110);
+  const everyone = speedCounts([...others, ...quick, ...slow]);
+  const pQuick = sectionPercentile(quick, everyone)!;
+  const pSlow = sectionPercentile(slow, everyone)!;
+  // 260 beats 7 of the others and all 20 slow passes, and ties its own 20: (27 + 10) / 50.
+  assert.equal(Math.round(pQuick * 100) / 100, 74);
+  // 110 beats 1 of the others and ties its own: (1 + 10) / 50.
+  assert.equal(Math.round(pSlow * 100) / 100, 22);
+  assert.equal(sectionPercentile(runs(MIN_RUNS - 1, 260), everyone), null);
 });

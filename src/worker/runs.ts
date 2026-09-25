@@ -6,14 +6,17 @@
 // Daily runs are recorded by the daily leaderboard (daily.ts). Like those, a run is sent as what
 // was drawn at which physics step, and the server replays it: the time kept is the replay's.
 // Besides each run, the server keeps how many runs finished in each 0.1 s bucket, so working
-// out a percentile reads at most a few thousand small rows.
+// out a percentile reads at most a few thousand small rows. The replay also times each section
+// of the course; speeds through sections are kept the same way, by section type.
 import { RANDOM_BASE, TUTORIAL, isTestStage } from '../shared/course/stages';
 import { HASH_RE, playerHash } from '../shared/identity';
 import { cleanInputs } from '../shared/replay';
+import type { SectionSplit } from '../shared/replay';
 import {
-  MIN_RUNS, RECENT_RUNS, bucketOf, percentile,
+  MIN_RUNS, RECENT_RUNS, bucketOf, percentile, sectionPercentile, sectionSpeed, speedBucket,
 } from '../shared/stats';
-import type { Stats } from '../shared/stats';
+import type { SectionStats, Stats, TimeCounts } from '../shared/stats';
+import type { SectionType } from '../shared/types';
 import ensureSchema from './db';
 import type { Env } from './env';
 import { allowed, json, logError } from './http';
@@ -28,14 +31,58 @@ const MAX_BODY = 256 * 1024;
 /** Stage numbers go up to RANDOM_BASE plus a generated course's number (below this). */
 const MAX_STAGE = RANDOM_BASE + 100000000;
 
-/** Records a verified run: the run itself and its time bucket's count. */
-export async function recordRun(db: D1Database, player: string, course: string, time: number): Promise<void> {
+/** Records a verified run: the run itself, its speed through each section, and the counts. */
+export async function recordRun(
+  db: D1Database,
+  player: string,
+  course: string,
+  time: number,
+  splits: SectionSplit[],
+): Promise<void> {
+  const hash = await playerHash(player);
   await db.batch([
     db.prepare('INSERT INTO runs (player, hash, course, time, created_at) VALUES (?1, ?2, ?3, ?4, ?5)')
-      .bind(player, await playerHash(player), course, time, Date.now()),
+      .bind(player, hash, course, time, Date.now()),
     db.prepare(`INSERT INTO run_times (bucket, n) VALUES (?1, 1)
       ON CONFLICT (bucket) DO UPDATE SET n = n + 1`).bind(bucketOf(time)),
+    ...splits.flatMap(({ type, width, seconds }) => {
+      const speed = Math.round(sectionSpeed(width, seconds) * 10) / 10;
+      return [
+        db.prepare('INSERT INTO run_sections (hash, type, speed) VALUES (?1, ?2, ?3)').bind(hash, type, speed),
+        db.prepare(`INSERT INTO section_speeds (type, bucket, n) VALUES (?1, ?2, 1)
+          ON CONFLICT (type, bucket) DO UPDATE SET n = n + 1`).bind(type, speedBucket(speed)),
+      ];
+    }),
   ]);
+}
+
+/** Your standing on each section type you have been through, weakest first. */
+async function sectionStats(db: D1Database, hash: string): Promise<SectionStats[]> {
+  const [passes, recent, counts] = await db.batch([
+    db.prepare('SELECT type, COUNT(*) AS n FROM run_sections WHERE hash = ?1 GROUP BY type').bind(hash),
+    db.prepare(`SELECT type, speed FROM (
+        SELECT type, speed, ROW_NUMBER() OVER (PARTITION BY type ORDER BY id DESC) AS latest
+        FROM run_sections WHERE hash = ?1)
+      WHERE latest <= ?2`).bind(hash, RECENT_RUNS),
+    db.prepare('SELECT type, bucket, n FROM section_speeds'),
+  ]);
+  const speeds = new Map<string, number[]>();
+  (recent.results as { type: string; speed: number }[]).forEach(({ type, speed }) => {
+    speeds.set(type, [...(speeds.get(type) ?? []), speed]);
+  });
+  const everyone = new Map<string, [number, number][]>();
+  (counts.results as { type: string; bucket: number; n: number }[]).forEach(({ type, bucket, n }) => {
+    everyone.set(type, [...(everyone.get(type) ?? []), [bucket, n]]);
+  });
+  return (passes.results as { type: SectionType; n: number }[])
+    .map(({ type, n }) => ({
+      type,
+      passes: n,
+      percentile: n >= MIN_RUNS
+        ? sectionPercentile(speeds.get(type) ?? [], (everyone.get(type) ?? []) as TimeCounts)
+        : null,
+    }))
+    .sort((a, b) => (a.percentile ?? Infinity) - (b.percentile ?? Infinity) || b.passes - a.passes);
 }
 
 /** Your runs and percentile. */
@@ -52,6 +99,7 @@ export async function statsFor(db: D1Database, hash: string): Promise<Stats> {
     runs,
     percentile: runs >= MIN_RUNS ? percentile(times, buckets) : null,
     everyone: buckets.reduce((sum, [, n]) => sum + n, 0),
+    sections: await sectionStats(db, hash),
   };
 }
 
@@ -90,7 +138,7 @@ async function submit(env: Env, db: D1Database, request: Request): Promise<Respo
   }
   if (!verdict.finished) return json({ error: 'The server replayed your run and it did not reach the finish.' }, 422);
   const time = Math.round(verdict.time * 100) / 100;
-  await recordRun(db, who.player, `stage:${stage}`, time);
+  await recordRun(db, who.player, `stage:${stage}`, time, verdict.splits);
   return json({ ok: true, time, stats: await statsFor(db, await playerHash(who.player)) });
 }
 

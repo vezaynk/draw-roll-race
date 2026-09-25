@@ -1,8 +1,9 @@
 // Personal performance stats: every finished run (except the tutorial) is sent to the server,
 // which replays it and keeps its time. Your percentile compares your last 100 runs with every
 // run anyone has finished (see shared/stats.ts).
+import { SECTIONS } from '../shared/course/sections';
 import { MIN_RUNS, RECENT_RUNS } from '../shared/stats';
-import type { Stats } from '../shared/stats';
+import type { SectionStats, Stats } from '../shared/stats';
 import type { Recording } from './ghost';
 import { byId, el } from './dom';
 import { myHash, save } from './storage';
@@ -23,11 +24,52 @@ export function statsLine(target: HTMLElement, stats: Stats): void {
   );
 }
 
+const pct = (s: SectionStats) => `${Math.round(s.percentile ?? 0)}%`;
+
+/**
+ * Your strongest and weakest section types, for the results card (null until two are ranked and
+ * they differ).
+ */
+function sectionsLine(stats: Stats): string | null {
+  const ranked = stats.sections.filter((s) => s.percentile !== null);
+  if (ranked.length < 2) return null;
+  // Weakest first (the server sorts them).
+  const weakest = ranked[0];
+  const strongest = ranked[ranked.length - 1];
+  if (pct(strongest) === pct(weakest)) return null;
+  return `Strongest: ${SECTIONS[strongest.type].label} (${pct(strongest)}) · Weakest: ${SECTIONS[weakest.type].label} (${pct(weakest)})`;
+}
+
+/** Every section type you've been through: your percentile by speed, or passes so far. */
+function sectionsList(stats: Stats): HTMLElement {
+  const list = el('ul', 'section-stats');
+  [...stats.sections].reverse().forEach((s) => {
+    const row = el('li');
+    row.append(
+      el('span', '', SECTIONS[s.type].label),
+      s.percentile === null
+        ? el('span', 'pending', `${s.passes} of ${MIN_RUNS}`)
+        : el('strong', '', pct(s)),
+    );
+    list.append(row);
+  });
+  return list;
+}
+
 /** Shows stats in Options (under Your player). */
 function showInOptions(stats: Stats | null): void {
-  const line = byId('account-stats');
-  line.hidden = !stats;
-  if (stats) statsLine(line, stats);
+  const box = byId('account-stats');
+  box.hidden = !stats;
+  if (!stats) return;
+  const line = el('p');
+  statsLine(line, stats);
+  box.replaceChildren(line);
+  if (stats.sections.length) {
+    box.append(
+      el('p', 'menu-note', 'By section type (speed through it, against everyone’s):'),
+      sectionsList(stats),
+    );
+  }
 }
 
 /** Your stats from the server (null offline). */
@@ -72,5 +114,7 @@ export async function showResultStats(counted: Promise<Stats | null>): Promise<v
   const stats = await counted;
   if (!stats || mine !== card || byId('result').hidden) return;
   statsLine(line, stats);
+  const sections = sectionsLine(stats);
+  if (sections) line.append(el('br'), el('span', 'sections-line', sections));
   line.hidden = false;
 }

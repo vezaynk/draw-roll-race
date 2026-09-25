@@ -142,7 +142,7 @@ async function submit(env: Env, db: D1Database, request: Request): Promise<Respo
       time = MIN(daily_scores.time, excluded.time)`)
     .bind(day, player, name, time, Date.now(), JSON.stringify(inputs), verdict.ms, row.hash).run();
   // Every daily run also counts towards your stats, not just your best.
-  await recordRun(db, player, `daily:${day}`, time);
+  await recordRun(db, player, `daily:${day}`, time, verdict.splits);
   env.STATS?.writeDataPoint({ blobs: ['daily', day], doubles: [time], indexes: ['daily'] });
   return json({
     ok: true, time, claimed: Number(body.time) || null, verifySeconds: seconds,

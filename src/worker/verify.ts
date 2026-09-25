@@ -2,7 +2,7 @@
 // RunCheck Durable Object, a slice at a time, so no single invocation uses much CPU time. Used by
 // the daily leaderboard and by rooms.
 import { CFG } from '../shared/config';
-import type { RunInput } from '../shared/replay';
+import type { RunInput, SectionSplit } from '../shared/replay';
 import type { Env } from './env';
 import type { ReplayProgress } from './runCheck';
 
@@ -13,6 +13,8 @@ export interface Verdict {
   time: number;
   /** How long the check took (milliseconds). */
   ms: number;
+  /** Time through each section the replay got past. */
+  splits: SectionSplit[];
 }
 
 /** Where a run being checked comes from (for stats). */
@@ -38,7 +40,9 @@ export default async function verifyRun(
     progress = await check.advance();
     if (!progress) throw new Error('replay lost its state');
   } while (!progress.done);
-  const verdict = { finished: progress.finished, time: progress.time, ms: Date.now() - started };
+  const verdict = {
+    finished: progress.finished, time: progress.time, ms: Date.now() - started, splits: progress.splits ?? [],
+  };
   env.STATS?.writeDataPoint({
     blobs: ['verify', source, verdict.finished ? 'finished' : 'not-finished'],
     doubles: [verdict.ms, verdict.time, inputs.length],

@@ -139,6 +139,11 @@ button:focus-visible { outline: 3px solid var(--player); outline-offset: 2px; }
 #result-best.new { color: var(--player); }
 #result-stats, .stats-line { font-size: 14px; }
 #result-stats strong, .stats-line strong { color: var(--player); }
+#result-stats .sections-line { color: var(--muted); font-size: 13px; }
+.stats-line p { margin: 0 0 6px; }
+.section-stats { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 2px 16px; font-size: 13px; }
+.section-stats li { display: flex; justify-content: space-between; gap: 8px; }
+.section-stats .pending { color: var(--muted); }
 #result .primary { background: var(--ink); color: #fff; margin-top: 6px; }
 #result-exit { align-self: center; }
 

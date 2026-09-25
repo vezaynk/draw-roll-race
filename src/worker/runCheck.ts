@@ -5,7 +5,7 @@
 import { DurableObject } from 'cloudflare:workers';
 import buildCourse from '../shared/course/build';
 import { RunReplay } from '../shared/replay';
-import type { RunInput } from '../shared/replay';
+import type { RunInput, SectionSplit } from '../shared/replay';
 import type { Course } from '../shared/types';
 import type { Env } from './env';
 
@@ -16,6 +16,8 @@ export interface ReplayProgress {
   done: boolean;
   finished: boolean;
   time: number;
+  /** Time through each section, once the replay is done. */
+  splits?: SectionSplit[];
 }
 
 const courses = new Map<number, Course>();
@@ -42,7 +44,9 @@ export class RunCheck extends DurableObject<Env> {
     if (!replay) return null;
     const done = replay.advance(STEPS_PER_CALL);
     if (done) this.replay = null;
-    return { done, finished: replay.finished, time: replay.time };
+    return {
+      done, finished: replay.finished, time: replay.time, splits: done ? replay.splits : undefined,
+    };
   }
 }
 

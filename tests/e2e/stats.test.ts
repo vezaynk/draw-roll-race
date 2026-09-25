@@ -2,7 +2,9 @@
 // after MIN_RUNS runs your percentile against all runs shows on the results card and in Options.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
+import buildCourse from '../../src/shared/course/build';
 import { MIN_RUNS } from '../../src/shared/stats';
+import botRun from '../support/bot';
 import {
   BASE, launch, newPlayer, drawWheel, text,
 } from './helpers';
@@ -43,6 +45,43 @@ test('runs count towards your stats; after enough of them you get a percentile',
   await p.click('#result-exit');
   await p.click('#menu-btn');
   assert.match(await text(p, '#account-stats'), /^Your last 20 runs beat \d+%/);
+  // Stage 990 is all bumps: that section type now has a percentile too.
+  assert.match(await text(p, '#account-stats .section-stats'), /Bumpy Road\W*\d+%/);
+  await p.click('#options-close');
+
+  // Twenty runs on a course with five other section types: the results card then names your
+  // strongest and weakest types.
+  const other = botRun(buildCourse(991));
+  assert.ok(other.finished);
+  await p.evaluate(async ({ inputs, times }) => {
+    const player = JSON.parse(localStorage.getItem('draw-roll-race') ?? '{}').player as string;
+    for (let i = 0; i < times; i += 1) {
+      await fetch('/api/runs', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ player, stage: 991, inputs }),
+      });
+    }
+  }, { inputs: other.inputs, times: MIN_RUNS });
+  // Someone else gets through bumps at another speed, so your types don't all tie at 50%.
+  const rival = await newPlayer(browser, 'Rival');
+  await rival.goto(BASE);
+  const stage0 = botRun(buildCourse(0));
+  await rival.evaluate(async ({ inputs, times }) => {
+    const player = JSON.parse(localStorage.getItem('draw-roll-race') ?? '{}').player as string;
+    for (let i = 0; i < times; i += 1) {
+      await fetch('/api/runs', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ player, stage: 0, inputs }),
+      });
+    }
+  }, { inputs: stage0.inputs, times: MIN_RUNS });
+  await rival.context().close();
+  await p.goto(`${BASE}?stage=990`);
+  await drawWheel(p);
+  await p.waitForSelector('#result-stats .sections-line', { timeout: 60000 });
+  assert.match(await text(p, '#result-stats'), /Strongest: .+ \(\d+%\) · Weakest: .+ \(\d+%\)/);
+  await p.click('#result-exit');
+  await p.click('#menu-btn');
+  const types = await p.locator('#account-stats .section-stats li').count();
+  assert.equal(types, 6, 'bumps and the five types of stage 991');
 
   assert.deepEqual(p.errors, []);
 

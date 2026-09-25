@@ -191,6 +191,7 @@ async function mergeScores(db: D1Database, from: string, to: string): Promise<vo
     db.prepare('DELETE FROM daily_scores WHERE player = ?1').bind(from),
     // All their runs count towards the player's stats.
     db.prepare('UPDATE runs SET player = ?1, hash = ?2 WHERE player = ?3').bind(to, target?.hash ?? '', from),
+    db.prepare('UPDATE run_sections SET hash = ?1 WHERE hash = ?2').bind(target?.hash ?? '', await playerHash(from)),
     // A player without a name takes the anonymous player's.
     // (The anonymous player may have no row: then there's no name to take.)
     db.prepare(`UPDATE players SET name = COALESCE((SELECT name FROM players WHERE id = ?1), '')

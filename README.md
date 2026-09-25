@@ -91,8 +91,15 @@ by anyone on any course, that your last 100 runs beat on average. Mixing
 courses makes this rough, but it still moves while each course has only a few
 players. Until then, the results card counts down the runs you still need.
 
+**By section type:** the replay also times each section of the course. Options
+lists your percentile for each section type you've been through, such as
+Chasm or Wind, and the results card names your strongest and weakest types.
+Sections of one type come in different sizes, so they compare by **speed
+through the section** (length ÷ time) against everyone's passes of that type:
+your last 100 passes, once you have 20.
+
 To keep this cheap, the server also keeps a count of runs in each 0.1 s time
-bucket. Working out a percentile then reads your last 100 runs plus at most a
+bucket, and of section passes in each 5 units/s speed bucket for each type. Working out a percentile then reads your last 100 runs plus at most a
 few thousand bucket rows (`shared/stats.ts`, `worker/runs.ts`). Runs are rate
 limited to 60 a minute for each network.
 

@@ -36,6 +36,22 @@ test('replaying in slices gives the same result as all at once', () => {
   assert.equal(sliced.steps, whole.steps);
 });
 
+test('the replay times every section of the course, the same in slices', () => {
+  const course = buildCourse(991);
+  const run = botRun(course);
+  const whole = new RunReplay(course, run.inputs, MAX);
+  whole.advance();
+  assert.deepEqual(whole.splits.map((s) => s.type), course.sections.map((s) => s.type));
+  whole.splits.forEach((s, i) => {
+    assert.ok(s.seconds > 0 && s.seconds < whole.time, `${s.type}: ${s.seconds}`);
+    assert.equal(s.width, course.sections[i].to - course.sections[i].from);
+  });
+  assert.ok(whole.splits.reduce((sum, s) => sum + s.seconds, 0) < whole.time);
+  const sliced = new RunReplay(course, run.inputs, MAX);
+  while (!sliced.advance(100));
+  assert.deepEqual(sliced.splits, whole.splits);
+});
+
 // The physics is part of every saved daily run: if it changes, runs recorded before the change
 // replay differently. Update these only for an intended physics change.
 test('the physics has not changed', () => {
