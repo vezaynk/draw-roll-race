@@ -1,5 +1,5 @@
 // Buttons around the race: the stage name, Exit, the results card, and the start buttons for the
-// daily course and the tutorial.
+// daily course, the tutorial and a random course.
 import {
   RANDOM_BASE, TUTORIAL, dailyStage, today,
 } from '../shared/course/stages';
@@ -63,12 +63,18 @@ function exitToStart(): void {
 /** How many generated courses "a random course" picks from (the daily courses come after). */
 const RANDOM_COURSES = 1000000;
 
-/** A generated course picked at random, raced at once (from the results card). */
-function playRandomCourse(): void {
+/** A generated course picked at random, ready to race (from the start screen). */
+function enterRandomCourse(): void {
   state.daily = null;
   state.stage = RANDOM_BASE + Math.floor(Math.random() * RANDOM_COURSES);
   hideResults();
   resetStage();
+  showHint(DEFAULT_HINT, 0);
+}
+
+/** The same, raced at once (from the results card). */
+function playRandomCourse(): void {
+  enterRandomCourse();
   startRace();
 }
 
@@ -100,6 +106,7 @@ export default function initControls(): void {
 
   byId('start-daily').addEventListener('click', () => enterDaily());
   byId('start-tutorial').addEventListener('click', enterTutorial);
+  byId('start-random').addEventListener('click', enterRandomCourse);
   byId('exit-btn').addEventListener('click', exitToStart);
   byId('result-exit').addEventListener('click', exitToStart);
 

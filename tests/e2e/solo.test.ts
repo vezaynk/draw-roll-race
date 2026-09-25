@@ -62,7 +62,7 @@ test('a double tap clears the nearest limb, mid-race too, and the run still repl
   await p.context().close();
 });
 
-test('after the daily course or the tutorial, the results card offers a random course', async () => {
+test('a random course: on the start screen, and after the daily course or the tutorial', async () => {
   const p = await newPlayer(browser, 'Rae', { width: 1280, height: 800 });
   /** Shows the results card as if the current course had just been finished. */
   const finish = () => p.evaluate(() => {
@@ -80,6 +80,20 @@ test('after the daily course or the tutorial, the results card offers a random c
   assert.equal(picked.racing, true, 'the race starts at once');
   assert.equal(await p.isVisible('#result'), false);
   assert.match(await text(p, '#stage-label'), /Random course/);
+
+  // The start screen has one too: it picks a course, ready to race when you draw.
+  await p.click('#exit-btn');
+  await p.click('#start-random');
+  const chosen = await p.evaluate(() => ({ stage: window.drr.state.stage, racing: window.drr.state.racing }));
+  assert.ok(chosen.stage >= RANDOM_BASE && chosen.stage < RANDOM_BASE + 1000000, `stage ${chosen.stage}`);
+  assert.equal(chosen.racing, false, 'waits for a limb');
+  // (A toast from the race just left may briefly cover the title, so read what it says.)
+  const title = await p.evaluate(() => ({
+    shown: !document.getElementById('mode-title')?.hidden,
+    name: document.getElementById('mode-name')?.textContent,
+    sub: document.getElementById('mode-sub')?.textContent,
+  }));
+  assert.deepEqual(title, { shown: true, name: 'Random course', sub: 'Draw a limb to start' });
 
   // The tutorial.
   await p.goto(`${BASE}?stage=${TUTORIAL}`);
