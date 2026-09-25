@@ -1,13 +1,21 @@
-// "Your player" in Options (and "Save your score" after a daily run): a display name, and one
-// button, "Save with a passkey". There is no separate "create account" and "sign in":
-//  - if the browser has a passkey for this site, using it makes this device that passkey's
-//    player, and the device's own anonymous player is remapped into it;
-//  - otherwise a new passkey is made for this device's player, which claims it.
-// Signed in, the button adds another passkey. Logging out forgets everything on this device.
-// See worker/auth.ts.
-import { browserSupportsWebAuthn, startAuthentication, startRegistration } from '@simplewebauthn/browser';
+// "Your player" in Options (and "Save your score" after a daily run, and the Customize window): a
+// display name, and one button, "Save with a passkey". There is no separate "create account"
+// and "sign in":
+//  - the button first offers the passkeys the browser has for this site. Using one makes this
+//    device that passkey's player, and the device's own anonymous player is remapped into it;
+//  - if none is used, it asks: make a new passkey (which claims this device's player), or try
+//    again. Browsers report "you cancelled" and "you have no passkey" the same way, so it never
+//    makes one without asking: a returning player who dismissed the sheet would get a second
+//    player instead of theirs.
+// Returning players can also pick their passkey from the autofill list on the name field in
+// Options. Signed in, the button adds another passkey. Logging out forgets everything on this
+// device. See worker/auth.ts.
+import {
+  browserSupportsWebAuthn, browserSupportsWebAuthnAutofill, startAuthentication, startRegistration,
+} from '@simplewebauthn/browser';
+import type { AuthenticationResponseJSON } from '@simplewebauthn/browser';
 import { lookAfterSignIn } from './appearance';
-import { byId } from './dom';
+import { byId, el } from './dom';
 import { loadStats } from './stats';
 import {
   becomePlayer, displayName, forgetEverything, persist, playerName, save, setPlayerName,
@@ -24,8 +32,8 @@ interface Me {
 
 let online = false;
 let busy = false;
-/** Using an existing passkey was just tried and none was picked: the next tap makes one. */
-let noExistingPasskey = false;
+/** A passkey sign-in is waiting on the name field's autofill list. */
+let autofilling = false;
 const listeners: (() => void)[] = [];
 
 /** Called after this device saves or changes its player. */
@@ -38,11 +46,13 @@ export function canSave(): boolean {
   return online && browserSupportsWebAuthn() && !save.signedIn;
 }
 
-function note(text: string, warning = false): void {
-  const el = byId('account-note');
-  el.textContent = text;
-  el.classList.toggle('warn', warning);
+/** Shows a message under a passkey button (by default, the one in Options). */
+function say(text: string, warning = false, target = byId('account-note')): void {
+  target.textContent = text;
+  target.classList.toggle('warn', warning);
 }
+
+const note = (text: string, warning = false) => say(text, warning);
 
 function render(): void {
   byId('account').hidden = !online;
@@ -70,22 +80,24 @@ async function post<T>(path: string, data: unknown = {}): Promise<T> {
   return out;
 }
 
-/** The passkey prompt was dismissed: not an error worth showing. */
+/** The passkey prompt was dismissed (or there was nothing to pick): not an error worth showing. */
 const cancelled = (e: unknown) => e instanceof Error && e.name === 'NotAllowedError';
 
-/** Runs one passkey action. Returns the message to show, or throws. */
-async function run(task: () => Promise<string>, show = note): Promise<boolean> {
-  if (busy) return false;
+type Outcome = 'done' | 'dismissed' | 'failed';
+
+/** Runs one passkey action, showing its message (or error) in `target`. */
+async function run(task: () => Promise<string>, target: HTMLElement): Promise<Outcome> {
+  if (busy) return 'failed';
   busy = true;
-  note('');
+  say('', false, target);
   try {
-    show(await task());
+    say(await task(), false, target);
     listeners.forEach((listener) => listener());
-    return true;
+    return 'done';
   } catch (e) {
-    if (!cancelled(e)) show(e instanceof Error ? e.message : String(e), true);
-    else if (noExistingPasskey) show('No passkey was saved. Tap again to make one.');
-    return false;
+    if (cancelled(e)) return 'dismissed';
+    say(e instanceof Error ? e.message : String(e), true, target);
+    return 'failed';
   } finally {
     busy = false;
     render();
@@ -104,14 +116,11 @@ async function createPasskey(): Promise<string> {
   const response = await startRegistration({ optionsJSON });
   const out = await post<{ hash: string; name: string }>('register/verify', { response });
   becomePlayer(save.player, out.hash, out.name || name);
-  noExistingPasskey = false;
   return adding ? 'Added another passkey for your player.' : 'Saved. Your player now has a passkey.';
 }
 
-/** Uses a passkey the browser already has: this device becomes its player. */
-async function useExistingPasskey(): Promise<string> {
-  const optionsJSON = await post<Parameters<typeof startAuthentication>[0]['optionsJSON']>('login/options');
-  const response = await startAuthentication({ optionsJSON });
+/** Signs in with a passkey the browser gave us: this device becomes its player. */
+async function signIn(response: AuthenticationResponseJSON): Promise<string> {
   const out = await post<{ player: string; hash: string; name: string; look: unknown }>(
     'login/verify',
     { response, localPlayer: save.player },
@@ -121,22 +130,68 @@ async function useExistingPasskey(): Promise<string> {
   return `Saved. You’re playing as ${displayName()} again.`;
 }
 
+type LoginOptions = Parameters<typeof startAuthentication>[0]['optionsJSON'];
+
+/** Offers the passkeys the browser has for this site (a sheet the player picks from). */
+async function useExistingPasskey(): Promise<string> {
+  const optionsJSON = await post<LoginOptions>('login/options');
+  return signIn(await startAuthentication({ optionsJSON }));
+}
+
+/** After a dismissed sheet: make a new passkey, or try again? Waits for a tap on one of them. */
+function ask(target: HTMLElement): Promise<'create' | 'retry'> {
+  say('No passkey used. New here? Make one for this player. Have one? Try again.', false, target);
+  const make = el('button', 'primary', 'Make a new passkey');
+  const again = el('button', 'quiet', 'Try again');
+  make.dataset.choice = 'create';
+  again.dataset.choice = 'retry';
+  [make, again].forEach((b) => b.setAttribute('type', 'button'));
+  const row = el('span', 'passkey-choice');
+  row.append(make, again);
+  target.append(row);
+  return new Promise((resolve) => {
+    make.addEventListener('click', () => resolve('create'), { once: true });
+    again.addEventListener('click', () => resolve('retry'), { once: true });
+  });
+}
+
 /**
- * "Save with a passkey": first offers the passkeys this browser has for the site; if none is
- * used, makes a new one. (Browsers may drop the second prompt if too long passes after the tap;
- * then the next tap goes straight to making one.)
+ * "Save with a passkey", showing what happens in `target`. Signed in, it adds a passkey.
+ * Otherwise it offers the browser's passkeys for this site; if none is used, it asks whether
+ * to make a new one or try again (each choice is its own tap, as browsers want for a passkey
+ * prompt). Resolves true once the player is saved (or signed in), false if not.
  */
-export function saveWithPasskey(show = note): Promise<boolean> {
-  return run(async () => {
-    if (save.signedIn || noExistingPasskey) return createPasskey();
-    try {
-      return await useExistingPasskey();
-    } catch (e) {
-      if (!cancelled(e)) throw e;
-      noExistingPasskey = true;
-      return createPasskey();
+export async function saveWithPasskey(target = byId('account-note')): Promise<boolean> {
+  if (save.signedIn) return (await run(createPasskey, target)) === 'done';
+  for (;;) {
+    const tried = await run(useExistingPasskey, target);
+    if (tried !== 'dismissed') return tried === 'done';
+    if ((await ask(target)) === 'create') {
+      const made = await run(createPasskey, target);
+      if (made === 'dismissed') say('No passkey was made.', false, target);
+      return made === 'done';
     }
-  }, show);
+  }
+}
+
+/**
+ * Passkey autofill: while "Your player" is open, the name field's suggestions include this
+ * site's passkeys, so a returning player can sign in by picking theirs. Starting another passkey
+ * prompt (the button) cancels this one.
+ */
+export async function offerPasskeyAutofill(): Promise<void> {
+  if (autofilling || !canSave() || !(await browserSupportsWebAuthnAutofill())) return;
+  autofilling = true;
+  try {
+    const optionsJSON = await post<LoginOptions>('login/options');
+    const response = await startAuthentication({ optionsJSON, useBrowserAutofill: true });
+    if (busy) return;
+    await run(() => signIn(response), byId('account-note'));
+  } catch {
+    // cancelled by another prompt, or the challenge ran out: nothing to show
+  } finally {
+    autofilling = false;
+  }
 }
 
 /** Logs out and forgets everything on this device; the next visit starts as a new player. */
@@ -146,7 +201,7 @@ function logOut(): Promise<void> {
     forgetEverything();
     window.location.reload();
     return '';
-  }).then(() => {});
+  }, byId('account-note')).then(() => {});
 }
 
 /** Checks the session with the server (it may have been ended on another device). */

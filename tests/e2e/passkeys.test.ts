@@ -106,9 +106,18 @@ test('passkeys: one button saves a new player or brings back an existing one; lo
   assert.ok(parsed.top.every((r) => /^[0-9a-f]{32}$/.test(r.hash)), 'rows carry hashes');
   assert.ok(parsed.you, 'finds your own entry by hash');
 
-  // No passkey exists yet, so the button makes one.
+  // No passkey exists yet. The button first offers the browser's passkeys; with none picked it
+  // asks rather than making one (a dismissed sheet looks the same as having none).
   await openAccount(a.page);
   await a.page.click('#passkey-save');
+  await a.page.waitForSelector('#account-note [data-choice="create"]');
+  assert.match(await a.page.locator('#account-note').innerText(), /No passkey used/);
+  const none = await a.cdp.send('WebAuthn.getCredentials', { authenticatorId: a.authenticatorId });
+  assert.equal(none.credentials.length, 0, 'nothing made without asking');
+  // Try again offers the passkeys again (still none), then make one.
+  await a.page.click('#account-note [data-choice="retry"]');
+  await a.page.waitForSelector('#account-note [data-choice="create"]');
+  await a.page.click('#account-note [data-choice="create"]');
   await waitForText(a.page, '#account-status', /saved with a passkey/i, 15000);
   assert.match(await a.page.locator('#account-note').innerText(), /now has a passkey/i);
   assert.equal((await saved(a.page)).signedIn, true);
@@ -144,7 +153,13 @@ test('passkeys: one button saves a new player or brings back an existing one; lo
   // there uses it: B becomes Ana's player, and B's run from yesterday is remapped to her.
   const { credentials } = await a.cdp.send('WebAuthn.getCredentials', { authenticatorId: a.authenticatorId });
   await b.cdp.send('WebAuthn.addCredential', { authenticatorId: b.authenticatorId, credential: credentials[0] });
+  // Opening "Your player" also lists the site's passkeys in the name field's autofill, where the
+  // browser supports it (it asks the server for a sign-in challenge to wait with).
+  const autofill = b.page.waitForRequest((r) => r.url().endsWith('/api/auth/login/options'), { timeout: 5000 })
+    .then(() => true, () => false);
   await openAccount(b.page);
+  const conditional = await b.page.evaluate(() => PublicKeyCredential.isConditionalMediationAvailable?.() ?? false);
+  assert.equal(await autofill, conditional, 'autofill sign-in starts where supported');
   assert.equal(await b.page.locator('#passkey-signin').count(), 0, 'no separate sign-in button');
   await b.page.click('#passkey-save');
   await waitForText(b.page, '#account-status', /saved with a passkey/i, 15000);
@@ -204,6 +219,7 @@ test('after a daily run, "Save your score" saves the player with a passkey', asy
   }, { d: day, time: run.time, inputs: run.inputs });
   await c.page.waitForSelector('#save-score', { state: 'visible' });
   await c.page.click('#save-score');
+  await c.page.click('#lb-note [data-choice="create"]');
   await c.page.waitForSelector('#save-score', { state: 'hidden', timeout: 15000 });
   assert.match(await c.page.locator('#lb-note').innerText(), /now has a passkey/i);
   const after = await saved(c.page);

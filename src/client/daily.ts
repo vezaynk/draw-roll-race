@@ -146,7 +146,7 @@ export function initSaveScore(): void {
     const { day } = button.dataset;
     if (!day) return;
     button.disabled = true;
-    const saved = await saveWithPasskey((text, warning) => note(text, warning));
+    const saved = await saveWithPasskey(byId('lb-note'));
     button.disabled = false;
     if (!saved) return;
     button.hidden = true;
