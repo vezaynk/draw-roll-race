@@ -1,13 +1,14 @@
-// Every finished run, for personal performance stats (shared/stats.ts).
+// Finished runs, for personal performance stats (shared/stats.ts). Only each player's best run on
+// each course counts.
 //
 //   POST /api/runs { player, stage, inputs }   a finished run on a stage (solo or in a room)
 //   GET  /api/stats?hash=<your hash>           your runs and percentile
 //
 // Daily runs are recorded by the daily leaderboard (daily.ts). Like those, a run is sent as what
 // was drawn at which physics step, and the server replays it: the time kept is the replay's.
-// Besides each run, the server keeps how many runs finished in each 0.1 s bucket, so working
-// out a percentile reads at most a few thousand small rows. The replay also times each section
-// of the course; speeds through sections are kept the same way, by section type.
+// Besides each best, the server keeps how many bests are in each 0.1 s bucket, so working out a
+// percentile reads at most a few thousand small rows. The replay also times each section of the
+// course; speeds through sections (of best runs) are kept the same way, by section type.
 import { RANDOM_BASE, TUTORIAL, isTestStage } from '../shared/course/stages';
 import { HASH_RE, playerHash } from '../shared/identity';
 import { cleanInputs } from '../shared/replay';
@@ -31,7 +32,24 @@ const MAX_BODY = 256 * 1024;
 /** Stage numbers go up to RANDOM_BASE plus a generated course's number (below this). */
 const MAX_STAGE = RANDOM_BASE + 100000000;
 
-/** Records a verified run: the run itself, its speed through each section, and the counts. */
+const speedOf = (split: SectionSplit) => Math.round(sectionSpeed(split.width, split.seconds) * 10) / 10;
+
+/** Statements that take a player's best on a course out of the stats (to replace or drop it). */
+async function forgetBest(db: D1Database, hash: string, course: string, time: number): Promise<D1PreparedStatement[]> {
+  const sections = await db.prepare('SELECT type, speed FROM best_sections WHERE hash = ?1 AND course = ?2')
+    .bind(hash, course).all<{ type: string; speed: number }>();
+  return [
+    db.prepare('UPDATE best_times SET n = n - 1 WHERE bucket = ?1').bind(bucketOf(time)),
+    ...sections.results.map(({ type, speed }) => db.prepare('UPDATE best_speeds SET n = n - 1 WHERE type = ?1 AND bucket = ?2')
+      .bind(type, speedBucket(speed))),
+    db.prepare('DELETE FROM best_sections WHERE hash = ?1 AND course = ?2').bind(hash, course),
+  ];
+}
+
+/**
+ * Records a verified run. Only your best run on each course counts: a slower run just marks the
+ * course as played now (your latest courses are the ones that count).
+ */
 export async function recordRun(
   db: D1Database,
   player: string,
@@ -40,31 +58,74 @@ export async function recordRun(
   splits: SectionSplit[],
 ): Promise<void> {
   const hash = await playerHash(player);
+  const now = Date.now();
+  const old = await db.prepare('SELECT time FROM course_bests WHERE player = ?1 AND course = ?2')
+    .bind(player, course).first<{ time: number }>();
+  if (old && old.time <= time) {
+    await db.prepare('UPDATE course_bests SET played_at = ?1 WHERE player = ?2 AND course = ?3')
+      .bind(now, player, course).run();
+    return;
+  }
   await db.batch([
-    db.prepare('INSERT INTO runs (player, hash, course, time, created_at) VALUES (?1, ?2, ?3, ?4, ?5)')
-      .bind(player, hash, course, time, Date.now()),
-    db.prepare(`INSERT INTO run_times (bucket, n) VALUES (?1, 1)
+    ...(old ? await forgetBest(db, hash, course, old.time) : []),
+    db.prepare(`INSERT INTO course_bests (player, hash, course, time, played_at) VALUES (?1, ?2, ?3, ?4, ?5)
+      ON CONFLICT (player, course) DO UPDATE SET time = excluded.time, played_at = excluded.played_at`)
+      .bind(player, hash, course, time, now),
+    db.prepare(`INSERT INTO best_times (bucket, n) VALUES (?1, 1)
       ON CONFLICT (bucket) DO UPDATE SET n = n + 1`).bind(bucketOf(time)),
-    ...splits.flatMap(({ type, width, seconds }) => {
-      const speed = Math.round(sectionSpeed(width, seconds) * 10) / 10;
+    ...splits.flatMap((split) => {
+      const speed = speedOf(split);
       return [
-        db.prepare('INSERT INTO run_sections (hash, type, speed) VALUES (?1, ?2, ?3)').bind(hash, type, speed),
-        db.prepare(`INSERT INTO section_speeds (type, bucket, n) VALUES (?1, ?2, 1)
-          ON CONFLICT (type, bucket) DO UPDATE SET n = n + 1`).bind(type, speedBucket(speed)),
+        db.prepare('INSERT INTO best_sections (hash, course, type, speed) VALUES (?1, ?2, ?3, ?4)')
+          .bind(hash, course, split.type, speed),
+        db.prepare(`INSERT INTO best_speeds (type, bucket, n) VALUES (?1, ?2, 1)
+          ON CONFLICT (type, bucket) DO UPDATE SET n = n + 1`).bind(split.type, speedBucket(speed)),
       ];
     }),
   ]);
 }
 
-/** Your standing on each section type you have been through, weakest first. */
+/**
+ * Statements that move an anonymous player's bests to another player (signing in with a
+ * passkey): on a course both have run, the better best stays and the other leaves the stats.
+ */
+export async function mergeBests(db: D1Database, from: string, to: string): Promise<D1PreparedStatement[]> {
+  const [fromHash, toHash] = await Promise.all([playerHash(from), playerHash(to)]);
+  const [theirs, mine] = await Promise.all([from, to].map((player) => db
+    .prepare('SELECT course, time FROM course_bests WHERE player = ?1').bind(player)
+    .all<{ course: string; time: number }>()));
+  const kept = new Map(mine.results.map((r) => [r.course, r.time]));
+  const statements = await Promise.all(theirs.results.map(async ({ course, time }) => {
+    const other = kept.get(course);
+    if (other !== undefined && other <= time) {
+      return [
+        ...await forgetBest(db, fromHash, course, time),
+        db.prepare('DELETE FROM course_bests WHERE player = ?1 AND course = ?2').bind(from, course),
+      ];
+    }
+    return [
+      ...(other === undefined ? [] : [
+        ...await forgetBest(db, toHash, course, other),
+        db.prepare('DELETE FROM course_bests WHERE player = ?1 AND course = ?2').bind(to, course),
+      ]),
+      db.prepare('UPDATE course_bests SET player = ?1, hash = ?2 WHERE player = ?3 AND course = ?4')
+        .bind(to, toHash, from, course),
+      db.prepare('UPDATE best_sections SET hash = ?1 WHERE hash = ?2 AND course = ?3').bind(toHash, fromHash, course),
+    ];
+  }));
+  return statements.flat();
+}
+
+/** Your standing on each section type, from your bests on your latest courses, weakest first. */
 async function sectionStats(db: D1Database, hash: string): Promise<SectionStats[]> {
   const [passes, recent, counts] = await db.batch([
-    db.prepare('SELECT type, COUNT(*) AS n FROM run_sections WHERE hash = ?1 GROUP BY type').bind(hash),
+    db.prepare('SELECT type, COUNT(*) AS n FROM best_sections WHERE hash = ?1 GROUP BY type').bind(hash),
     db.prepare(`SELECT type, speed FROM (
-        SELECT type, speed, ROW_NUMBER() OVER (PARTITION BY type ORDER BY id DESC) AS latest
-        FROM run_sections WHERE hash = ?1)
+        SELECT s.type, s.speed, ROW_NUMBER() OVER (PARTITION BY s.type ORDER BY b.played_at DESC) AS latest
+        FROM best_sections s JOIN course_bests b ON b.hash = s.hash AND b.course = s.course
+        WHERE s.hash = ?1)
       WHERE latest <= ?2`).bind(hash, RECENT_RUNS),
-    db.prepare('SELECT type, bucket, n FROM section_speeds'),
+    db.prepare('SELECT type, bucket, n FROM best_speeds WHERE n > 0'),
   ]);
   const speeds = new Map<string, number[]>();
   (recent.results as { type: string; speed: number }[]).forEach(({ type, speed }) => {
@@ -85,19 +146,19 @@ async function sectionStats(db: D1Database, hash: string): Promise<SectionStats[
     .sort((a, b) => (a.percentile ?? Infinity) - (b.percentile ?? Infinity) || b.passes - a.passes);
 }
 
-/** Your runs and percentile. */
+/** Your courses and percentile (your bests on your latest courses against everyone's bests). */
 export async function statsFor(db: D1Database, hash: string): Promise<Stats> {
   const [count, recent, counts] = await db.batch([
-    db.prepare('SELECT COUNT(*) AS n FROM runs WHERE hash = ?1').bind(hash),
-    db.prepare('SELECT time FROM runs WHERE hash = ?1 ORDER BY id DESC LIMIT ?2').bind(hash, RECENT_RUNS),
-    db.prepare('SELECT bucket, n FROM run_times'),
+    db.prepare('SELECT COUNT(*) AS n FROM course_bests WHERE hash = ?1').bind(hash),
+    db.prepare('SELECT time FROM course_bests WHERE hash = ?1 ORDER BY played_at DESC LIMIT ?2').bind(hash, RECENT_RUNS),
+    db.prepare('SELECT bucket, n FROM best_times WHERE n > 0'),
   ]);
-  const runs = (count.results[0] as { n: number } | undefined)?.n ?? 0;
+  const courses = (count.results[0] as { n: number } | undefined)?.n ?? 0;
   const times = (recent.results as { time: number }[]).map((r) => r.time);
   const buckets = (counts.results as { bucket: number; n: number }[]).map((r) => [r.bucket, r.n] as const);
   return {
-    runs,
-    percentile: runs >= MIN_RUNS ? percentile(times, buckets) : null,
+    courses,
+    percentile: courses >= MIN_RUNS ? percentile(times, buckets) : null,
     everyone: buckets.reduce((sum, [, n]) => sum + n, 0),
     sections: await sectionStats(db, hash),
   };

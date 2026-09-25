@@ -23,6 +23,7 @@ import { PLAYER_RE, playerHash } from '../shared/identity';
 import { sanitizeLook } from '../shared/look';
 import { nameFromHash } from '../shared/names';
 import ensureSchema from './db';
+import { mergeBests } from './runs';
 import type { Env } from './env';
 import { allowed, cleanText, json, logError } from './http';
 import { moderateName } from './moderation';
@@ -168,7 +169,7 @@ async function loginOptions(request: Request, db: D1Database): Promise<Response>
 
 /**
  * Remaps an anonymous player to another: their daily scores move over (keeping the better time
- * per day) and their runs move over, a missing name is filled in, and the anonymous player is
+ * per day) and their course bests move over (likewise), a missing name is filled in, and the anonymous player is
  * removed.
  */
 async function mergeScores(db: D1Database, from: string, to: string): Promise<void> {
@@ -189,9 +190,8 @@ async function mergeScores(db: D1Database, from: string, to: string): Promise<vo
   });
   statements.push(
     db.prepare('DELETE FROM daily_scores WHERE player = ?1').bind(from),
-    // All their runs count towards the player's stats.
-    db.prepare('UPDATE runs SET player = ?1, hash = ?2 WHERE player = ?3').bind(to, target?.hash ?? '', from),
-    db.prepare('UPDATE run_sections SET hash = ?1 WHERE hash = ?2').bind(target?.hash ?? '', await playerHash(from)),
+    // Their best runs count towards the player's stats (the better one where both ran a course).
+    ...await mergeBests(db, from, to),
     // A player without a name takes the anonymous player's.
     // (The anonymous player may have no row: then there's no name to take.)
     db.prepare(`UPDATE players SET name = COALESCE((SELECT name FROM players WHERE id = ?1), '')

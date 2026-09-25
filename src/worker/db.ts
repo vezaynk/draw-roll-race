@@ -1,4 +1,4 @@
-// The D1 database: daily scores, every run (for stats), players, their passkeys, sign-in challenges and sessions.
+// The D1 database: daily scores, best runs per course (for stats), players, their passkeys, sign-in challenges and sessions.
 // Tables are created on first use, so production, previews and local runs need no setup.
 import { playerHash } from '../shared/identity';
 
@@ -23,18 +23,17 @@ const TABLES = [
   `CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT PRIMARY KEY, player TEXT NOT NULL, created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL)`,
-  // Every finished run (for stats), and how many runs finished in each 0.1 s bucket.
-  `CREATE TABLE IF NOT EXISTS runs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, player TEXT NOT NULL, hash TEXT NOT NULL,
-    course TEXT NOT NULL, time REAL NOT NULL, created_at INTEGER NOT NULL)`,
-  'CREATE INDEX IF NOT EXISTS runs_by_hash ON runs (hash, id)',
-  'CREATE INDEX IF NOT EXISTS runs_by_player ON runs (player)',
-  'CREATE TABLE IF NOT EXISTS run_times (bucket INTEGER PRIMARY KEY, n INTEGER NOT NULL)',
-  // Speed through every section of every run, and how many passes of each type were how fast.
-  `CREATE TABLE IF NOT EXISTS run_sections (
-    id INTEGER PRIMARY KEY AUTOINCREMENT, hash TEXT NOT NULL, type TEXT NOT NULL, speed REAL NOT NULL)`,
-  'CREATE INDEX IF NOT EXISTS run_sections_by_hash ON run_sections (hash, type, id)',
-  `CREATE TABLE IF NOT EXISTS section_speeds (
+  // Each player's best run on each course (for stats), with its speed through each section, and
+  // how many bests are in each time bucket and each section type's speed bucket.
+  `CREATE TABLE IF NOT EXISTS course_bests (
+    player TEXT NOT NULL, hash TEXT NOT NULL, course TEXT NOT NULL, time REAL NOT NULL,
+    played_at INTEGER NOT NULL, PRIMARY KEY (player, course))`,
+  'CREATE INDEX IF NOT EXISTS course_bests_by_hash ON course_bests (hash, played_at)',
+  'CREATE TABLE IF NOT EXISTS best_times (bucket INTEGER PRIMARY KEY, n INTEGER NOT NULL)',
+  `CREATE TABLE IF NOT EXISTS best_sections (
+    hash TEXT NOT NULL, course TEXT NOT NULL, type TEXT NOT NULL, speed REAL NOT NULL)`,
+  'CREATE INDEX IF NOT EXISTS best_sections_by_hash ON best_sections (hash, course)',
+  `CREATE TABLE IF NOT EXISTS best_speeds (
     type TEXT NOT NULL, bucket INTEGER NOT NULL, n INTEGER NOT NULL, PRIMARY KEY (type, bucket))`,
 ];
 

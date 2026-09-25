@@ -1,8 +1,11 @@
-// Personal stats: every finished run (not the tutorial) is replayed and kept by the server, and
-// after MIN_RUNS runs your percentile against all runs shows on the results card and in Options.
+// Personal stats: every finished run (not the tutorial) is replayed by the server, which keeps your
+// best on each course. After MIN_RUNS courses your percentile against everyone's bests shows on
+// the results card and in Options, overall and by section type.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
+import type { Page } from 'playwright';
 import buildCourse from '../../src/shared/course/build';
+import { STAGES } from '../../src/shared/course/stages';
 import { MIN_RUNS } from '../../src/shared/stats';
 import botRun from '../support/bot';
 import {
@@ -12,77 +15,77 @@ import {
 const browser = await launch();
 after(() => browser.close());
 
-test('runs count towards your stats; after enough of them you get a percentile', async () => {
+interface Posted { status: number; stats?: { courses: number; percentile: number | null; everyone: number } }
+
+/** Posts a scripted run on each stage from inside the page, as the page's player. */
+async function postRuns(page: Page, stages: number[]): Promise<Posted[]> {
+  const runs = stages.map((stage) => ({ stage, inputs: botRun(buildCourse(stage)).inputs }));
+  return page.evaluate(async (list) => {
+    const player = JSON.parse(localStorage.getItem('draw-roll-race') ?? '{}').player as string;
+    const out: { status: number; stats?: never }[] = [];
+    for (const { stage, inputs } of list) {
+      const res = await fetch('/api/runs', {
+        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ player, stage, inputs }),
+      });
+      out.push({ status: res.status, ...(await res.json()) });
+    }
+    return out;
+  }, runs);
+}
+
+test('your best on each course counts; after enough courses you get a percentile', async () => {
   const p = await newPlayer(browser, 'Stat', { width: 1280, height: 800 });
   await p.goto(`${BASE}?stage=990`);
   await drawWheel(p);
   await p.waitForSelector('#result-stats', { state: 'visible', timeout: 60000 });
-  assert.match(await text(p, '#result-stats'), new RegExp(`^1 of ${MIN_RUNS} runs: finish ${MIN_RUNS - 1} more`));
+  const first = new RegExp(`^1 of ${MIN_RUNS} courses: finish ${MIN_RUNS - 1} more`);
+  assert.match(await text(p, '#result-stats'), first);
 
-  // More runs: send the same recording again (the server replays each one).
-  const sent = await p.evaluate(async (more) => {
-    const { state } = window.drr;
-    const player = JSON.parse(localStorage.getItem('draw-roll-race') ?? '{}').player as string;
-    let last: unknown = null;
-    for (let i = 0; i < more; i += 1) {
-      const res = await fetch('/api/runs', {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ player, stage: state.stage, inputs: state.recording?.inputs }),
-      });
-      last = await res.json();
-    }
-    return last as { stats: { runs: number; percentile: number | null } };
-  }, MIN_RUNS - 2);
-  assert.equal(sent.stats.runs, MIN_RUNS - 1);
-  assert.equal(sent.stats.percentile, null, 'no percentile one run short');
-
-  // The next finish gets one.
+  // The same course again is still one course.
   await p.click('#again-btn');
   await drawWheel(p);
+  await p.waitForFunction(() => !document.getElementById('result')?.hidden);
   await p.waitForSelector('#result-stats', { state: 'visible', timeout: 60000 });
-  assert.match(await text(p, '#result-stats'), /^Your last 20 runs beat \d+% of all \d+ runs\.$/);
-  await p.click('#result-exit');
-  await p.click('#menu-btn');
-  assert.match(await text(p, '#account-stats'), /^Your last 20 runs beat \d+%/);
-  // Stage 990 is all bumps: that section type now has a percentile too.
-  assert.match(await text(p, '#account-stats .section-stats'), /Bumpy Road\W*\d+%/);
-  await p.click('#options-close');
+  assert.match(await text(p, '#result-stats'), first);
 
-  // Twenty runs on a course with five other section types: the results card then names your
-  // strongest and weakest types.
-  const other = botRun(buildCourse(991));
-  assert.ok(other.finished);
-  await p.evaluate(async ({ inputs, times }) => {
-    const player = JSON.parse(localStorage.getItem('draw-roll-race') ?? '{}').player as string;
-    for (let i = 0; i < times; i += 1) {
-      await fetch('/api/runs', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ player, stage: 991, inputs }),
-      });
-    }
-  }, { inputs: other.inputs, times: MIN_RUNS });
-  // Someone else gets through bumps at another speed, so your types don't all tie at 50%.
+  // Runs on other courses: Endless stages with both a tunnel and an incline, so those section
+  // types reach MIN_RUNS passes too. One short of the minimum there's no percentile, and running
+  // a course again doesn't add one.
+  const endless: number[] = [];
+  for (let stage = STAGES.length; endless.length < MIN_RUNS; stage += 1) {
+    const types = buildCourse(stage).sections.map((x) => x.type);
+    if (types.includes('tunnel') && types.includes('incline')) endless.push(stage);
+  }
+  const most = await postRuns(p, endless.slice(0, MIN_RUNS - 2));
+  assert.ok(most.every((r) => r.status === 200));
+  assert.equal(most.at(-1)?.stats?.courses, MIN_RUNS - 1);
+  assert.equal(most.at(-1)?.stats?.percentile, null, 'no percentile one course short');
+  const again = await postRuns(p, [endless[0]]);
+  assert.equal(again[0].stats?.courses, MIN_RUNS - 1, 'a course run again still counts once');
+  assert.equal(again[0].stats?.everyone, most.at(-1)?.stats?.everyone, 'and adds nothing to everyone’s bests');
+  const rest = await postRuns(p, endless.slice(MIN_RUNS - 2));
+  assert.equal(rest[0].stats?.courses, MIN_RUNS);
+  assert.notEqual(rest[0].stats?.percentile, null);
+
+  // Someone else has been through the same section types at other sizes, so yours differ.
   const rival = await newPlayer(browser, 'Rival');
   await rival.goto(BASE);
-  const stage0 = botRun(buildCourse(0));
-  await rival.evaluate(async ({ inputs, times }) => {
-    const player = JSON.parse(localStorage.getItem('draw-roll-race') ?? '{}').player as string;
-    for (let i = 0; i < times; i += 1) {
-      await fetch('/api/runs', {
-        method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ player, stage: 0, inputs }),
-      });
-    }
-  }, { inputs: stage0.inputs, times: MIN_RUNS });
+  assert.ok((await postRuns(rival, [0, 1, 2])).every((r) => r.status === 200));
   await rival.context().close();
+
+  // The next finish shows the percentile, and your strongest and weakest section types.
   await p.goto(`${BASE}?stage=990`);
   await drawWheel(p);
   await p.waitForSelector('#result-stats .sections-line', { timeout: 60000 });
+  assert.match(await text(p, '#result-stats'), /^Your bests on your last 21 courses beat \d+% of all \d+ course bests\./);
   assert.match(await text(p, '#result-stats'), /Strongest: .+ \(\d+%\) · Weakest: .+ \(\d+%\)/);
   await p.click('#result-exit');
   await p.click('#menu-btn');
-  const types = await p.locator('#account-stats .section-stats li').count();
-  assert.equal(types, 6, 'bumps and the five types of stage 991');
-
+  assert.match(await text(p, '#account-stats'), /^Your bests on your last 21 courses beat \d+%/);
+  const sections = await text(p, '#account-stats .section-stats');
+  assert.match(sections, /Tunnel\W*\d+%/);
+  assert.match(sections, /Steep Climb\W*\d+%/);
+  assert.match(sections, /Bumpy Road\W*\d+ of 20/, 'fewer than 20 passes: a count, not a percentile');
   assert.deepEqual(p.errors, []);
 
   // The tutorial doesn't count, and the server refuses a run that doesn't finish.

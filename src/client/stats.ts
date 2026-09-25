@@ -1,6 +1,6 @@
 // Personal performance stats: every finished run (except the tutorial) is sent to the server,
-// which replays it and keeps its time. Your percentile compares your last 100 runs with every
-// run anyone has finished (see shared/stats.ts).
+// which replays it and keeps your best time on each course. Your percentile compares your bests
+// on your last 100 courses with everyone's bests (see shared/stats.ts).
 import { SECTIONS } from '../shared/course/sections';
 import { MIN_RUNS, RECENT_RUNS } from '../shared/stats';
 import type { SectionStats, Stats } from '../shared/stats';
@@ -8,19 +8,19 @@ import type { Recording } from './ghost';
 import { byId, el } from './dom';
 import { myHash, save } from './storage';
 
-/** The stats line: your percentile, or how many runs to go until there is one. */
+/** The stats line: your percentile, or how many courses to go until there is one. */
 export function statsLine(target: HTMLElement, stats: Stats): void {
   target.textContent = '';
   if (stats.percentile === null) {
-    const left = MIN_RUNS - stats.runs;
-    target.append(`${stats.runs} of ${MIN_RUNS} runs: finish ${left} more to get your performance percentile.`);
+    const left = MIN_RUNS - stats.courses;
+    target.append(`${stats.courses} of ${MIN_RUNS} courses: finish ${left} more to get your performance percentile (your best time on each course counts).`);
     return;
   }
-  const recent = Math.min(stats.runs, RECENT_RUNS);
+  const recent = Math.min(stats.courses, RECENT_RUNS);
   target.append(
-    'Your last ', String(recent), ' runs beat ',
+    `Your bests on your last ${recent} courses beat `,
     el('strong', '', `${Math.round(stats.percentile)}%`),
-    ` of all ${stats.everyone} runs.`,
+    ` of all ${stats.everyone} course bests.`,
   );
 }
 
