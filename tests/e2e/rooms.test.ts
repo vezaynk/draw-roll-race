@@ -87,7 +87,7 @@ test('joining a code with no room shows a clear error', async () => {
 test('new room codes are unique and names are moderated', async () => {
   const codes = new Set<string>();
   const made = await Promise.all(Array.from({ length: 5 }, async () => {
-    const res = await fetch(`${BASE}api/rooms`, { method: 'POST' });
+    const res = await fetch(`${BASE}api/rooms`, { method: 'POST', headers: { 'CF-Connecting-IP': '10.255.0.1' } });
     return ((await res.json()) as { code: string }).code;
   }));
   made.forEach((c) => codes.add(c));

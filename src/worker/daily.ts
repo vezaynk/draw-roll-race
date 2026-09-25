@@ -19,6 +19,7 @@ import ensureSchema from './db';
 import { cleanText, json, logError } from './http';
 import { moderateName } from './moderation';
 import { posterFor, upsertPlayer } from './players';
+import { recordRun } from './runs';
 import verifyRun from './verify';
 import type { Verdict } from './verify';
 
@@ -140,6 +141,8 @@ async function submit(env: Env, db: D1Database, request: Request): Promise<Respo
         THEN excluded.verify_ms ELSE daily_scores.verify_ms END,
       time = MIN(daily_scores.time, excluded.time)`)
     .bind(day, player, name, time, Date.now(), JSON.stringify(inputs), verdict.ms, row.hash).run();
+  // Every daily run also counts towards your stats, not just your best.
+  await recordRun(db, player, `daily:${day}`, time, verdict.splits);
   env.STATS?.writeDataPoint({ blobs: ['daily', day], doubles: [time], indexes: ['daily'] });
   return json({
     ok: true, time, claimed: Number(body.time) || null, verifySeconds: seconds,

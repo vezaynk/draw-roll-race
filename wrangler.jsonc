@@ -26,10 +26,11 @@
   "d1_databases": [
     { "binding": "DB", "database_name": "draw-roll-race", "database_id": "a6c2fe76-1441-49d6-aa68-673ba58ae519" }
   ],
-  // Per-IP limits on creating rooms, sending daily runs and passkey requests.
+  // Per-IP limits on creating rooms, sending daily runs, sending other runs and passkey requests.
   "ratelimits": [
     { "name": "CREATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
     { "name": "SUBMIT_LIMITER", "namespace_id": "1002", "simple": { "limit": 20, "period": 60 } },
+    { "name": "RUNS_LIMITER", "namespace_id": "1004", "simple": { "limit": 60, "period": 60 } },
     { "name": "AUTH_LIMITER", "namespace_id": "1003", "simple": { "limit": 30, "period": 60 } }
   ],
   // Race, daily-run and replay-check numbers go to Workers Analytics Engine (the code skips
@@ -53,6 +54,7 @@
     "ratelimits": [
       { "name": "CREATE_LIMITER", "namespace_id": "1001", "simple": { "limit": 10, "period": 60 } },
       { "name": "SUBMIT_LIMITER", "namespace_id": "1002", "simple": { "limit": 20, "period": 60 } },
+      { "name": "RUNS_LIMITER", "namespace_id": "1004", "simple": { "limit": 60, "period": 60 } },
       { "name": "AUTH_LIMITER", "namespace_id": "1003", "simple": { "limit": 30, "period": 60 } }
     ],
     "analytics_engine_datasets": [

@@ -9,7 +9,7 @@ import {
   createRunner, settle, shatter, swapLimbs,
 } from './runner';
 import type {
-  Course, EncodedLimbs, Limbs, Runner, Shattered,
+  Course, EncodedLimbs, Limbs, Runner, SectionType, Shattered,
 } from './types';
 
 /** [physics step, limbs drawn just before that step (packLimbs)] */
@@ -58,6 +58,15 @@ export function cleanInputs(value: unknown): RunInput[] | null {
   return ok ? out : null;
 }
 
+/** How long a run took through one section of the course (for stats by section type). */
+export interface SectionSplit {
+  type: SectionType;
+  /** Section length (world units). */
+  width: number;
+  /** From first reaching its start to first reaching its end. */
+  seconds: number;
+}
+
 /** Called after every step, for drawing a replay as a ghost. */
 export type ReplayWatcher = (time: number, runner: Runner, limbs: Limbs) => void;
 
@@ -79,6 +88,11 @@ export class RunReplay {
 
   private next = 1;
 
+  /** Section starts and ends, in order along the course, and when the runner first reached each. */
+  private readonly marks: number[];
+
+  private readonly reached: number[] = [];
+
   constructor(
     private readonly course: Course,
     private readonly inputs: RunInput[],
@@ -87,6 +101,17 @@ export class RunReplay {
   ) {
     this.limbs = decodeLimbs(inputs[0][1]);
     this.runner = runnerAtStart(course, this.limbs);
+    this.marks = course.sections.flatMap((s) => [s.from, s.to]);
+  }
+
+  /** Time through each section the runner has got past so far. */
+  get splits(): SectionSplit[] {
+    return this.course.sections.flatMap((s, i) => {
+      const start = this.reached[2 * i];
+      const end = this.reached[2 * i + 1];
+      if (end === undefined) return [];
+      return [{ type: s.type, width: s.to - s.from, seconds: end - start }];
+    });
   }
 
   get done(): boolean {
@@ -108,6 +133,9 @@ export class RunReplay {
       const broken = stepPlayer(course, this.runner, this.limbs);
       if (broken) ({ runner: this.runner, limbs: this.limbs } = broken);
       this.watch?.(this.time, this.runner, this.limbs);
+      while (this.reached.length < this.marks.length && this.runner.x >= this.marks[this.reached.length]) {
+        this.reached.push(this.time);
+      }
       if (this.runner.x >= course.finishX) this.finished = true;
     }
     return this.done;
