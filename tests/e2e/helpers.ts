@@ -26,6 +26,7 @@ declare global {
       buildCourse: typeof buildCourse;
       RunReplay: typeof RunReplay;
       submitDaily: (day: string, time: number, rec: { samples: unknown[]; limbs: unknown[]; inputs: RunInput[]; lastT: number }) => Promise<void>;
+      showResults: () => void;
     };
   }
 }

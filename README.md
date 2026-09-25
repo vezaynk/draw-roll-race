@@ -62,6 +62,9 @@ with a leaderboard of the fastest runs. The start screen names the day's
 leader, but only your own best run comes back as a ghost: nobody's run is
 shown to other players, so strategies stay private.
 
+After the daily course or the tutorial, the results card also offers **🎲 Play
+a random course**: one of a million generated courses, raced straight away.
+
 ## Customize (🎨)
 
 The 🎨 **Customize** button on the start screen dresses up your runner: a hair

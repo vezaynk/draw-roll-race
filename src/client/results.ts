@@ -71,6 +71,8 @@ export default function showResults(): void {
   nextButton.dataset.action = next.action;
   // A second button replays the same course when the main one moves on.
   byId('again-btn').hidden = next.action === 'again';
+  // After the daily course or the tutorial, a quick way into something new.
+  byId('random-btn').hidden = !state.daily && state.stage !== TUTORIAL;
 
   if (state.stage === TUTORIAL) save.tutorialDone = true;
   if (next.action === 'next' && state.stage < RANDOM_BASE) {

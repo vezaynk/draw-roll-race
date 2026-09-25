@@ -1,6 +1,8 @@
-// Solo play: a full race to the results, spikes shattering limbs, and double-tap to clear a limb.
+// Solo play: a full race to the results, spikes shattering limbs, double-tap to clear a limb, and
+// a random course after the daily course or the tutorial.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
+import { RANDOM_BASE, TUTORIAL } from '../../src/shared/course/stages';
 import {
   BASE, launch, newPlayer, drawArm, drawWheel, drawSpokes, doubleTapPad, text, waitForText,
 } from './helpers';
@@ -56,6 +58,39 @@ test('a double tap clears the nearest limb, mid-race too, and the run still repl
   });
   assert.ok(run.cleared, 'the clear was recorded');
   assert.equal(run.replayed, run.time, 'the run replays to the same time');
+  assert.deepEqual(p.errors, []);
+  await p.context().close();
+});
+
+test('after the daily course or the tutorial, the results card offers a random course', async () => {
+  const p = await newPlayer(browser, 'Rae', { width: 1280, height: 800 });
+  /** Shows the results card as if the current course had just been finished. */
+  const finish = () => p.evaluate(() => {
+    window.drr.state.time = 30;
+    window.drr.showResults();
+  });
+
+  // The daily course (what the game opens on).
+  await p.goto(BASE);
+  await finish();
+  assert.equal(await p.isVisible('#random-btn'), true, 'after the daily course');
+  await p.click('#random-btn');
+  const picked = await p.evaluate(() => ({ stage: window.drr.state.stage, racing: window.drr.state.racing }));
+  assert.ok(picked.stage >= RANDOM_BASE && picked.stage < RANDOM_BASE + 1000000, `stage ${picked.stage}`);
+  assert.equal(picked.racing, true, 'the race starts at once');
+  assert.equal(await p.isVisible('#result'), false);
+  assert.match(await text(p, '#stage-label'), /Random course/);
+
+  // The tutorial.
+  await p.goto(`${BASE}?stage=${TUTORIAL}`);
+  await finish();
+  assert.equal(await p.isVisible('#random-btn'), true, 'after the tutorial');
+
+  // Other courses keep their own next step.
+  await p.goto(`${BASE}?stage=990`);
+  await drawWheel(p);
+  await p.waitForSelector('#result', { state: 'visible', timeout: 60000 });
+  assert.equal(await p.isVisible('#random-btn'), false, 'not after other courses');
   assert.deepEqual(p.errors, []);
   await p.context().close();
 });

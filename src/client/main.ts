@@ -11,6 +11,7 @@ import initOnline from './online';
 import initOptions from './options';
 import { initPad } from './pad';
 import { onLimbCleared, onLimbsDrawn, resetStage } from './race';
+import showResults from './results';
 import { initScene } from './render/scene';
 import { initSound } from './sound';
 import { state } from './state';
@@ -21,7 +22,7 @@ declare global {
     /** For the browser tests and debugging in the console. */
     drr: {
       state: typeof state; buildCourse: typeof buildCourse; RunReplay: typeof RunReplay;
-      submitDaily: typeof submitDaily;
+      submitDaily: typeof submitDaily; showResults: typeof showResults;
     };
   }
 }
@@ -49,7 +50,7 @@ function boot(): void {
   // A first visit works out the player hash, which picks the default look.
   myHash().then(wearMyLook).catch(() => {});
   window.drr = {
-    state, buildCourse, RunReplay, submitDaily,
+    state, buildCourse, RunReplay, submitDaily, showResults,
   };
 }
 
