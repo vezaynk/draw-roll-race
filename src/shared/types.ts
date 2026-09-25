@@ -99,6 +99,14 @@ export interface Course {
   length: number;
 }
 
+/** Which ways contacts pushed part of a runner during a step: up is off a floor, down off a ceiling. */
+export interface Pressed {
+  up: boolean;
+  down: boolean;
+  left: boolean;
+  right: boolean;
+}
+
 export interface Joint {
   kind: LimbKind;
   /** Joint position relative to the body centre. */
@@ -113,6 +121,10 @@ export interface Joint {
   invI: number;
   reach: number;
   active: boolean;
+  /** Which ways contacts pushed the limb this step. */
+  pressed: Pressed;
+  /** How long the limb has been squeezed from opposite sides (seconds). */
+  crushed: number;
 }
 
 export interface Runner {
@@ -130,10 +142,12 @@ export interface Runner {
   y: number;
   vx: number;
   vy: number;
-  /** Limbs that touched spikes during the last step. */
+  /** Limbs that broke during the last step (spikes, or crushed). */
   hit: Record<LimbKind, boolean>;
   /** Seconds left before spikes can shatter limbs. */
   immune: number;
+  /** Which ways contacts pushed the torso this step. */
+  pressed: Pressed;
 }
 
 /** A limb or two broke on spikes. */
@@ -141,4 +155,6 @@ export interface Shattered {
   limbs: Limbs;
   runner: Runner;
   lost: LimbKind[];
+  /** They were wedged with no room to turn (otherwise spikes broke them). */
+  crushed: boolean;
 }

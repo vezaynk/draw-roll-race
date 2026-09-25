@@ -40,8 +40,10 @@ test('replaying in slices gives the same result as all at once', () => {
 // replay differently. Update these only for an intended physics change.
 test('the physics has not changed', () => {
   assert.equal(botRun(buildCourse(0)).time, 26.045833333332176);
-  assert.equal(botRun(buildCourse(2)).time, 41.14166666667244);
-  assert.equal(botRun(buildCourse(TUTORIAL)).time, 21.329166666665778);
+  // Stage 2 and the tutorial changed when wedged limbs began to shatter: the test player draws
+  // stilts in stage 2's tunnel, and the tutorial's long arm before its tunnel roof ends.
+  assert.equal(botRun(buildCourse(2)).time, 39.80416666667138);
+  assert.equal(botRun(buildCourse(TUTORIAL)).time, 22.80833333333236);
 });
 
 test('a run without working limbs does not finish', () => {

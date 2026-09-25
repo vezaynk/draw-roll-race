@@ -34,6 +34,14 @@ export const CFG = {
   SPIKE_H: 12,
   /** Seconds new limbs are safe from spikes after a redraw. */
   IMMUNE: 1.0,
+  /**
+   * A limb wedged between opposite sides (floor and ceiling, or two walls: contacts at least
+   * CRUSH_PEN deep) and turning at under CRUSH_SPIN of its top speed has no room to move. After
+   * CRUSH_TIME seconds of that, it shatters.
+   */
+  CRUSH_PEN: 1,
+  CRUSH_SPIN: 0.25,
+  CRUSH_TIME: 0.08,
   /** Restitution of bounce pads. */
   BOUNCE: 0.8,
 } as const;

@@ -33,8 +33,22 @@ export const BASE = process.env.E2E_BASE || 'http://127.0.0.1:8799/';
 
 export type TestPage = Page & { errors: string[] };
 
-export function launch(): Promise<Browser> {
-  return chromium.launch();
+let networks = 0;
+
+/**
+ * The browser for a test file. Each context it makes comes from its own network (the Worker's
+ * per-network rate limits key on CF-Connecting-IP, which Cloudflare sets in production but a
+ * local server takes from the request), so a whole suite of players doesn't share one limit.
+ */
+export async function launch(): Promise<Browser> {
+  const browser = await chromium.launch();
+  const newContext = browser.newContext.bind(browser);
+  browser.newContext = (options = {}) => {
+    networks += 1;
+    const ip = `10.${process.pid % 250}.${Math.floor(networks / 250) % 250}.${networks % 250}`;
+    return newContext({ ...options, extraHTTPHeaders: { 'CF-Connecting-IP': ip, ...options.extraHTTPHeaders } });
+  };
+  return browser;
 }
 
 /** A browser context with its own storage (so each "player" is a different person). */

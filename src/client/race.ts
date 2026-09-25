@@ -61,7 +61,10 @@ export function stopRace(): void {
   updateControls();
 }
 
-/** Spikes broke one or both limbs: throw the pieces, clear them from the pad, ask for a redraw. */
+/**
+ * Spikes broke one or both limbs, or they were crushed: throw the pieces, clear them from the
+ * pad, ask for a redraw.
+ */
 function onShatter(broken: Shattered): void {
   if (state.player) spawnShards(state.player, broken.lost);
   state.limbs = broken.limbs;
@@ -70,7 +73,9 @@ function onShatter(broken: Shattered): void {
   renderPad();
   const what = broken.lost.map((k) => LIMB_NAMES[k]).join(' and ');
   toast(`${what} shattered!`, 1200);
-  showHint(`Spikes broke your ${what.toLowerCase()}. Draw new ones.`, 2600);
+  showHint(broken.crushed
+    ? `No room to turn: your ${what.toLowerCase()} got crushed. Draw smaller ones.`
+    : `Spikes broke your ${what.toLowerCase()}. Draw new ones.`, 2600);
   sfx('shatter');
   hooks.onLimbs?.(state.limbs, broken.lost);
 }

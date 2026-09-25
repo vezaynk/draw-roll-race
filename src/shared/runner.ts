@@ -4,7 +4,7 @@ import { groundAt } from './course/queries';
 import { cos, sin } from './fmath';
 import { resample, rotateHalfTurn } from './geometry';
 import type {
-  Course, Joint, LimbKind, Limbs, Point, Runner, Shattered, Stroke,
+  Course, Joint, LimbKind, Limbs, Point, Pressed, Runner, Shattered, Stroke,
 } from './types';
 
 /** Each stroke plus a copy rotated 180° about its joint, so a half circle becomes a wheel. */
@@ -23,6 +23,10 @@ function torsoOutline(): Point[] {
   }
   return pts;
 }
+
+export const unpressed = (): Pressed => ({
+  up: false, down: false, left: false, right: false,
+});
 
 function makeJoint(kind: LimbKind, strokes: Stroke[], pivot: Point, offset: Point): Joint {
   const all = withMirror(strokes, pivot);
@@ -50,6 +54,8 @@ function makeJoint(kind: LimbKind, strokes: Stroke[], pivot: Point, offset: Poin
     invI: pts.length ? 1 / inertia : 0,
     reach: reach + CFG.R,
     active: pts.length > 0,
+    pressed: unpressed(),
+    crushed: 0,
   };
 }
 
@@ -81,6 +87,7 @@ export function createRunner(limbs: Limbs, color: string, speed = 1): Runner {
     vy: 0,
     hit: { arm: false, leg: false },
     immune: 0,
+    pressed: unpressed(),
   };
 }
 
@@ -126,7 +133,7 @@ export function swapLimbs(course: Course, old: Runner, limbs: Limbs): Runner {
   return b;
 }
 
-/** Removes the limbs that hit spikes during the last step, or returns null if none broke. */
+/** Removes the limbs that broke (spikes, or crushed) during the last step, or returns null if none did. */
 export function shatter(course: Course, runner: Runner, limbs: Limbs): Shattered | null {
   const lost = (['arm', 'leg'] as const).filter((k) => runner.hit[k] && limbs[k].length > 0);
   if (!lost.length) return null;
@@ -134,5 +141,8 @@ export function shatter(course: Course, runner: Runner, limbs: Limbs): Shattered
     arm: runner.hit.arm ? [] : limbs.arm,
     leg: runner.hit.leg ? [] : limbs.leg,
   };
-  return { limbs: next, runner: swapLimbs(course, runner, next), lost };
+  const crushed = runner.joints.some((j) => lost.includes(j.kind) && j.crushed >= CFG.CRUSH_TIME);
+  return {
+    limbs: next, runner: swapLimbs(course, runner, next), lost, crushed,
+  };
 }
