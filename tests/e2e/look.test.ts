@@ -75,6 +75,7 @@ test('saving with a passkey unlocks your look, which is kept and follows the pas
   await a.page.click('#start-look');
   const before = await worn(a.page);
   await a.page.click('#look-save');
+  await a.page.click('#look-note [data-choice="create"]');
   await a.page.waitForSelector('#look-locked', { state: 'hidden', timeout: 15000 });
   assert.equal(await worn(a.page), before, 'the look you had becomes yours');
   await a.page.click('[aria-label="Next hat"]');

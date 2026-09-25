@@ -93,7 +93,7 @@ export default function initLookPicker(): void {
     return row;
   }));
   byId('look-shuffle').addEventListener('click', () => choose(randomLook()));
-  byId('look-save').addEventListener('click', () => saveWithPasskey(note));
+  byId('look-save').addEventListener('click', () => saveWithPasskey(byId('look-note')));
   byId('look-close').addEventListener('click', closeLookMenu);
   byId('start-look').addEventListener('click', openLookMenu);
   // Saving (or signing in) unlocks the pickers, and may bring a look saved on another device.

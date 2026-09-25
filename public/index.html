@@ -33,6 +33,8 @@
     <button id="start-random" type="button" title="One of a million generated courses, picked at random"><span aria-hidden="true">🎲</span>Random course</button>
     <button id="start-online" type="button" title="Create or join a room" hidden><span aria-hidden="true">👥</span>Play with friends<small>Online</small></button>
     <button id="start-look" type="button" title="Hair, hats, eyes and glasses for your runner"><span aria-hidden="true">🎨</span>Customize</button>
+    <button id="start-signin" type="button" title="Use your passkey to race as your player on this device, or save this player with a new one" hidden><span aria-hidden="true">🔑</span>Sign in<small>Passkey</small></button>
+    <p id="start-note" role="status"></p>
   </nav>
   <p id="pad-hint">Draw from the shoulder or hip to give your runner arms or legs</p>
   <canvas id="pad" width="320" height="200" aria-label="Drawing pad"></canvas>
@@ -69,7 +71,7 @@
       <h3 id="account-title">Your player</h3>
       <div class="field-row">
         <label for="account-name">Name</label>
-        <input id="account-name" type="text" maxlength="24" autocomplete="nickname" spellcheck="false" placeholder="Runner">
+        <input id="account-name" type="text" maxlength="24" autocomplete="nickname webauthn" spellcheck="false" placeholder="Runner">
       </div>
       <div id="account-stats" class="stats-line" hidden></div>
       <p id="account-status" class="menu-note"></p>

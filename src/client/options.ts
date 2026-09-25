@@ -1,4 +1,5 @@
 // The Options panel (⚙): your player, sound, vibration, ghost and drawing-pad size.
+import { offerPasskeyAutofill } from './account';
 import { byId } from './dom';
 import { resize } from './render/scene';
 import { state } from './state';
@@ -27,6 +28,8 @@ function openOptions(): void {
   byId<HTMLInputElement>('opt-ghost').checked = save.ghost;
   byId<HTMLSelectElement>('opt-pad').value = save.pad;
   panel().hidden = false;
+  // Returning players can pick their passkey from the name field's autofill suggestions.
+  offerPasskeyAutofill();
 }
 
 type Toggle = 'sound' | 'vibrate' | 'ghost';
