@@ -227,3 +227,26 @@ test('after a daily run, "Save your score" saves the player with a passkey', asy
   assert.equal(after.player, cy.player, 'a new passkey keeps this device’s player');
   await c.page.context().close();
 });
+
+test('"Sign in" on the start screen runs the same flow', async () => {
+  // A new device: no passkey yet, so the button asks before making one.
+  const d = await device(browser, 'Di');
+  await d.page.waitForSelector('#start-signin', { state: 'visible' });
+  await d.page.click('#start-signin');
+  await d.page.click('#start-note [data-choice="create"]');
+  await waitForText(d.page, '#start-note', /now has a passkey/i, 15000);
+  await d.page.waitForSelector('#start-signin', { state: 'hidden' });
+  assert.equal((await saved(d.page)).signedIn, true);
+
+  // Another device with the synced passkey signs in from the start screen with one tap.
+  const e = await device(browser, 'Ed');
+  const { credentials } = await d.cdp.send('WebAuthn.getCredentials', { authenticatorId: d.authenticatorId });
+  await e.cdp.send('WebAuthn.addCredential', { authenticatorId: e.authenticatorId, credential: credentials[0] });
+  await e.page.waitForSelector('#start-signin', { state: 'visible' });
+  await e.page.click('#start-signin');
+  await waitForText(e.page, '#start-note', /playing as Di again/i, 15000);
+  await e.page.waitForSelector('#start-signin', { state: 'hidden' });
+  assert.equal((await saved(e.page)).player, (await saved(d.page)).player);
+  await d.page.context().close();
+  await e.page.context().close();
+});

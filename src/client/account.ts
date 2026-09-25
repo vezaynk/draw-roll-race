@@ -1,6 +1,6 @@
-// "Your player" in Options (and "Save your score" after a daily run, and the Customize window): a
-// display name, and one button, "Save with a passkey". There is no separate "create account"
-// and "sign in":
+// "Your player" in Options (and "Sign in" on the start screen, "Save your score" after a daily
+// run, and the Customize window): a display name, and one button, "Save with a passkey". There
+// is no separate "create account" and "sign in":
 //  - the button first offers the passkeys the browser has for this site. Using one makes this
 //    device that passkey's player, and the device's own anonymous player is remapped into it;
 //  - if none is used, it asks: make a new passkey (which claims this device's player), or try
@@ -67,6 +67,8 @@ function render(): void {
   byId('passkey-add').hidden = !save.signedIn || !supported;
   byId('logout-btn').hidden = !save.signedIn;
   if (!supported) note('This browser doesn’t support passkeys.');
+  // "Sign in" on the start screen, until this device's player is saved.
+  byId('start-signin').hidden = !canSave();
 }
 
 async function post<T>(path: string, data: unknown = {}): Promise<T> {
@@ -236,6 +238,7 @@ export default function initAccount(): void {
   });
   byId('passkey-save').addEventListener('click', () => saveWithPasskey());
   byId('passkey-add').addEventListener('click', () => saveWithPasskey());
+  byId('start-signin').addEventListener('click', () => saveWithPasskey(byId('start-note')));
   byId('logout-btn').addEventListener('click', logOut);
   render();
 }

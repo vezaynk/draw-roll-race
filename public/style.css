@@ -96,22 +96,31 @@ body:has(#toast.show) #mode-title { visibility: hidden; }
   touch-action: none; cursor: crosshair;
 }
 /* Start screen: big buttons above the drawing pad, shown while no solo race runs. */
-/* Wider than the pad, so five buttons fit in a row with their labels; on phones they wrap. */
-#start-menu { display: flex; flex-wrap: wrap; gap: 8px; width: min(94vw, 560px); margin-bottom: 4px; }
+/* Wider than the pad, so six buttons fit in a row with their labels; on phones they wrap. */
+#start-menu { display: flex; flex-wrap: wrap; gap: 8px; width: min(94vw, 620px); margin-bottom: 4px; }
+/* What "Sign in" did (and its "Make a new passkey / Try again" choice), under the buttons. */
+#start-note {
+  flex-basis: 100%; margin: 0; padding: 6px 12px; border-radius: 14px;
+  background: rgba(31,36,48,.85); color: #fff; font-size: 13px; text-align: center;
+}
+#start-note:empty { display: none; }
+#start-note.warn { color: #ffd2c8; }
+#start-note .passkey-choice button.quiet { background: transparent; color: #fff; border-color: rgba(255,255,255,.6); }
+#start-note .passkey-choice button.primary { background: #fff; color: var(--ink); }
 #start-menu[hidden],
 body:has(#options:not([hidden]), #online-menu:not([hidden]), #look-menu:not([hidden]), #result:not([hidden])) #start-menu { display: none; }
-#start-menu button {
+#start-menu > button {
   flex: 1 1 0; min-width: 88px; min-height: 64px; padding: 8px 6px; border-radius: 16px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
   font-size: 14px; line-height: 1.15; box-shadow: 0 6px 16px rgba(20,40,80,.25);
 }
-#start-menu button[hidden] { display: none; }
-#start-menu span { font-size: 20px; line-height: 1; }
-#start-menu small { font-size: 11px; font-weight: 600; color: var(--muted); }
+#start-menu > button[hidden] { display: none; }
+#start-menu > button > span { font-size: 20px; line-height: 1; }
+#start-menu > button > small { font-size: 11px; font-weight: 600; color: var(--muted); }
 /* Short screens: slimmer buttons without icons, so the runner at the start line stays in view. */
 @media (max-height: 700px) {
-  #start-menu button { min-height: 0; padding: 7px 4px; font-size: 13px; border-radius: 14px; }
-  #start-menu span, #start-menu small { display: none; }
+  #start-menu > button { min-height: 0; padding: 7px 4px; font-size: 13px; border-radius: 14px; }
+  #start-menu > button > span, #start-menu > button > small { display: none; }
 }
 button {
   font: inherit; font-weight: 700; cursor: pointer;
@@ -297,8 +306,10 @@ body.pad-large #pad-wrap { width: min(94vw, 540px); }
     display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2;
     overflow: hidden; border-radius: 14px;
   }
-  #start-menu { width: 100%; gap: 6px; }
-  #start-menu button { min-width: calc((100% - 12px) / 3); padding: 4px; font-size: 12px; }
+  #start-menu { width: 100%; gap: 4px; }
+  #start-menu > button { min-width: calc((100% - 8px) / 3); padding: 4px 1px; font-size: 11px; }
+  /* No room above the pad here: "Sign in" talks to its left, along the bottom. */
+  #start-note { position: absolute; right: calc(100% + 12px); bottom: 0; width: min(40vw, 320px); }
   #lobby, #online-menu, #options, #look-menu, #result { justify-content: flex-start; padding-left: max(16px, env(safe-area-inset-left)); }
   #lobby .card, #online-menu .card, #options .card, #look-menu .card { max-height: calc(100vh - 70px); width: min(55vw, 380px); }
   #result { padding-top: 60px; }

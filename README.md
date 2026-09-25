@@ -193,8 +193,9 @@ message in the lobby.
 - Every player has a secret random ID (a UUID) and a display name, both saved in the
   browser. The server never sends anyone's ID out: leaderboards carry a public hash of it
   (the first 128 bits of SHA-256), and each browser finds its own rows by hashing its own ID.
-- There is one button, **Save with a passkey** (in Options → Your player, in Customize, and
-  as **Save your score** after a daily run), with no separate "create account" and "sign in":
+- There is one button, **Save with a passkey** (in Options → Your player, in Customize, as
+  **Save your score** after a daily run, and as **🔑 Sign in** on the start screen until the
+  device's player is saved), with no separate "create account" and "sign in":
   - It first offers the browser's passkeys for the site. Using one makes this device that
     passkey's player: the server sends that player's ID to this browser only, and remaps the
     device's own anonymous player into it (its daily times and course bests move over, keeping
