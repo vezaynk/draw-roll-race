@@ -86,9 +86,40 @@ fallbacks: once you type a name or choose a look, that is stored and shown
 instead. The server fills in the same default name on leaderboards for players
 who haven't chosen one.
 
+## Your performance
+
+Every run you finish, except in the tutorial, is sent to the server. This covers
+solo stages, the daily course and room races. The server replays each run,
+keeps the time the replay gives, and remembers **your best time on each
+course**. Only these bests count for stats. Running a course again only
+counts if you beat your best, though it still marks the course as recently
+played.
+
+Once you have finished 20 different courses, the results card and Options show
+your **performance percentile**. It is the share of everyone's course bests that
+your bests on your last 100 courses beat, on average. Mixing courses makes this
+rough, but it still moves while each course has only a few players. Until then,
+the results card counts the courses you still need.
+
+**By section type:** the replay also times each section of the course. Options
+lists your percentile for each section type in your course bests, such as Chasm
+or Wind, and the results card names your strongest and weakest types.
+Sections of one type come in different sizes, so they compare by **speed
+through the section** (length ÷ time) against everyone's bests. Each type needs
+20 passes first, and a type appears in about half of generated courses, so these
+take longer to show than the overall number.
+
+To keep this cheap, the server keeps counts of bests in each 0.1 s time bucket,
+and of section passes in each 5 units/s speed bucket for each type. Working out
+a percentile reads your bests plus at most a few thousand small rows
+(`shared/stats.ts`, `worker/runs.ts`). When a best improves, its old counts are
+taken out. Signing in with a passkey moves an unsaved device's bests over,
+keeping the better one where both ran a course. Runs are rate limited to 60 a
+minute for each network.
+
 ## Options (⚙)
 
-- **Your player:** your name, and passkeys to keep your player on any device (see
+- **Your player:** your name, your performance percentile, and passkeys to keep your player on any device (see
   [Players and passkeys](#players-and-passkeys)).
 - **Race your best run:** your fastest run on each course comes back as a
   see-through "ghost" to beat.
@@ -227,7 +258,7 @@ TypeScript throughout, written to the Airbnb style guide's principles (no linter
 - `src/worker/`: the Cloudflare Worker.
   - `index.ts` (routes), `room.ts` (the `RaceRoom` Durable Object), `roomState.ts`,
     `directory.ts` (the public room list),
-    `daily.ts` (the leaderboard), `auth.ts` (passkeys), `players.ts` (players and sessions),
+    `daily.ts` (the leaderboard), `runs.ts` (best runs per course, for stats), `auth.ts` (passkeys), `players.ts` (players and sessions),
     `db.ts` (the D1 tables), `verify.ts` (checks a run by replaying it), `runCheck.ts` (the `RunCheck` Durable Object that replays
     runs), `moderation.ts`, `http.ts`, `env.ts`.
 - `tools/sim.ts`: checks that every kind of course can be finished, and that the tutorial CPU

@@ -8,6 +8,7 @@
 import { browserSupportsWebAuthn, startAuthentication, startRegistration } from '@simplewebauthn/browser';
 import { lookAfterSignIn } from './appearance';
 import { byId } from './dom';
+import { loadStats } from './stats';
 import {
   becomePlayer, displayName, forgetEverything, persist, playerName, save, setPlayerName,
 } from './storage';
@@ -170,6 +171,7 @@ export async function enableAccount(): Promise<void> {
   online = true;
   await refresh();
   render();
+  loadStats();
 }
 
 export default function initAccount(): void {

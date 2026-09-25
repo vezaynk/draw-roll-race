@@ -16,6 +16,7 @@ export interface Env {
   DB?: D1Database;
   CREATE_LIMITER?: RateLimiter;
   SUBMIT_LIMITER?: RateLimiter;
+  RUNS_LIMITER?: RateLimiter;
   AUTH_LIMITER?: RateLimiter;
   /** Workers Analytics Engine (stats are skipped without it). */
   STATS?: AnalyticsEngineDataset;

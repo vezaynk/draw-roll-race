@@ -18,6 +18,7 @@ declare global {
         ghosts: unknown[];
         cpu: unknown;
         look: Record<string, string>;
+        stage: number;
         player: Runner | null;
         course: Course;
         recording: { inputs: RunInput[] } | null;

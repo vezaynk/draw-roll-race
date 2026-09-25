@@ -68,6 +68,20 @@ async function postRun(page: Page, day: string): Promise<{ status: number; body:
   }, { d: day, inputs: run.inputs, time: run.time });
 }
 
+/** Posts a real run on a stage from inside the page; answers the stats it gets back. */
+async function postStage(page: Page, stage: number): Promise<{ courses: number; everyone: number }> {
+  const run = botRun(buildCourse(stage));
+  return page.evaluate(async ({ s, inputs }) => {
+    const me = JSON.parse(localStorage.getItem('draw-roll-race') ?? '{}');
+    const res = await fetch('/api/runs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ player: me.player, stage: s, inputs }),
+    });
+    return (await res.json()).stats;
+  }, { s: stage, inputs: run.inputs });
+}
+
 async function openAccount(page: Page): Promise<void> {
   await page.click('#menu-btn');
   await page.waitForSelector('#account', { state: 'visible' });
@@ -119,6 +133,12 @@ test('passkeys: one button saves a new player or brings back an existing one; lo
   const boRun = await postRun(b.page, yesterday);
   assert.equal(boRun.status, 200);
   const boTime = (JSON.parse(boRun.body) as { time: number }).time;
+  // Both have run stage 4 (the same time); only Bo has run stage 3. Ana's stats so far: today's
+  // daily course and stage 4.
+  assert.equal((await postStage(a.page, 4)).courses, 2);
+  await postStage(b.page, 3);
+  const beforeMerge = await postStage(b.page, 4);
+  assert.equal(beforeMerge.courses, 3, "Bo: yesterday's daily course, stages 3 and 4");
 
   // The passkey syncs to device B (as it would through a password manager). The same button
   // there uses it: B becomes Ana's player, and B's run from yesterday is remapped to her.
@@ -136,6 +156,11 @@ test('passkeys: one button saves a new player or brings back an existing one; lo
     you: { time: number } | null;
   };
   assert.equal(moved.you?.time, boTime, 'the anonymous run moved to the signed-in player');
+  // Bo's course bests moved too; on stage 4, where both had the same time, Ana's stays and Bo's
+  // no longer counts.
+  const stats = await (await fetch(`${BASE}api/stats?hash=${anaHash}`)).json() as { courses: number; everyone: number };
+  assert.equal(stats.courses, 4, 'both daily courses and stages 3 and 4');
+  assert.equal(stats.everyone, beforeMerge.everyone - 1, 'the duplicate stage 4 best left the counts');
 
   // More passkeys can point at the same player: B adds its own with one tap while signed in.
   const bOwn = await b.cdp.send('WebAuthn.addVirtualAuthenticator', {

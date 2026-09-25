@@ -5,6 +5,7 @@ import { byId, ordinal } from './dom';
 import { saveGhost } from './ghost';
 import { stageName } from './hud';
 import { sfx } from './sound';
+import { loadStats, sendRun, showResultStats } from './stats';
 import { state } from './state';
 import { persist, save } from './storage';
 
@@ -80,7 +81,14 @@ export default function showResults(): void {
 
   byId('leaderboard').hidden = true;
   byId('save-score').hidden = true;
-  if (state.daily && state.recording) submitDaily(state.daily.day, state.time, state.recording);
+  // Every run but the tutorial counts towards your stats (daily runs via the leaderboard).
+  if (state.daily && state.recording) {
+    showResultStats(submitDaily(state.daily.day, state.time, state.recording).then(loadStats));
+  } else if (state.stage !== TUTORIAL && state.recording) {
+    showResultStats(sendRun(state.stage, state.recording));
+  } else {
+    byId('result-stats').hidden = true;
+  }
   byId('result').hidden = false;
   sfx(win ? 'win' : 'lose');
   nextButton.focus();

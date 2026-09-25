@@ -2,6 +2,7 @@
 import { CODE_ALPHABET, CODE_RE } from '../shared/protocol';
 import handleAuth from './auth';
 import handleDaily from './daily';
+import handleRuns from './runs';
 import { Directory } from './directory';
 import type { Env } from './env';
 import { allowed, json } from './http';
@@ -75,6 +76,7 @@ export default {
     if (what === 'health') return json({ ok: true, daily: !!env.DB });
     if (what === 'daily' && parts.length === 2) return daily(request, env);
     if (what === 'daily' && parts[2] === 'leader' && parts.length === 3) return handleDaily(request, env);
+    if ((what === 'runs' || what === 'stats') && parts.length === 2) return handleRuns(request, env, what);
     if (what === 'rooms' && parts.length === 2) {
       return request.method === 'POST' ? createRoomCode(request, env) : listRooms(env);
     }

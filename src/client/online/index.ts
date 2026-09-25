@@ -20,6 +20,7 @@ import { hooks, state } from '../state';
 import {
   displayName, myHash, playerName, setPlayerName,
 } from '../storage';
+import { sendRun } from '../stats';
 import RoomConnection from './connection';
 import type { RoomSetup } from './connection';
 import {
@@ -432,6 +433,8 @@ function installHooks(): void {
     send({
       type: 'finish', r: net.raceId, time, inputs: state.recording?.inputs ?? [],
     });
+    // Room runs count towards your stats too.
+    if (state.recording) sendRun(state.stage, state.recording);
     net.racingIn = false;
     setStatus(`You finished in ${time.toFixed(2)} s. Waiting for the others…`);
     showLobby(true);
