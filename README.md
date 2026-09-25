@@ -81,9 +81,24 @@ fallbacks: once you type a name or choose a look, that is stored and shown
 instead. The server fills in the same default name on leaderboards for players
 who haven't chosen one.
 
+## Your performance
+
+Every run you finish, except in the tutorial, is sent to the server. The server
+replays the run and keeps the time the replay gives. This covers solo stages,
+the daily course and room races. Once you have finished 20 runs, the results
+card and Options show your **performance percentile**: the share of all runs,
+by anyone on any course, that your last 100 runs beat on average. Mixing
+courses makes this rough, but it still moves while each course has only a few
+players. Until then, the results card counts down the runs you still need.
+
+To keep this cheap, the server also keeps a count of runs in each 0.1 s time
+bucket. Working out a percentile then reads your last 100 runs plus at most a
+few thousand bucket rows (`shared/stats.ts`, `worker/runs.ts`). Runs are rate
+limited to 60 a minute for each network.
+
 ## Options (⚙)
 
-- **Your player:** your name, and passkeys to keep your player on any device (see
+- **Your player:** your name, your performance percentile, and passkeys to keep your player on any device (see
   [Players and passkeys](#players-and-passkeys)).
 - **Race your best run:** your fastest run on each course comes back as a
   see-through "ghost" to beat.
@@ -222,7 +237,7 @@ TypeScript throughout, written to the Airbnb style guide's principles (no linter
 - `src/worker/`: the Cloudflare Worker.
   - `index.ts` (routes), `room.ts` (the `RaceRoom` Durable Object), `roomState.ts`,
     `directory.ts` (the public room list),
-    `daily.ts` (the leaderboard), `auth.ts` (passkeys), `players.ts` (players and sessions),
+    `daily.ts` (the leaderboard), `runs.ts` (every run, for stats), `auth.ts` (passkeys), `players.ts` (players and sessions),
     `db.ts` (the D1 tables), `verify.ts` (checks a run by replaying it), `runCheck.ts` (the `RunCheck` Durable Object that replays
     runs), `moderation.ts`, `http.ts`, `env.ts`.
 - `tools/sim.ts`: checks that every kind of course can be finished, and that the tutorial CPU

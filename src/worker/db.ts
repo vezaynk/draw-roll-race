@@ -1,4 +1,4 @@
-// The D1 database: daily scores, players, their passkeys, sign-in challenges and sessions.
+// The D1 database: daily scores, every run (for stats), players, their passkeys, sign-in challenges and sessions.
 // Tables are created on first use, so production, previews and local runs need no setup.
 import { playerHash } from '../shared/identity';
 
@@ -23,6 +23,13 @@ const TABLES = [
   `CREATE TABLE IF NOT EXISTS sessions (
     token_hash TEXT PRIMARY KEY, player TEXT NOT NULL, created_at INTEGER NOT NULL,
     expires_at INTEGER NOT NULL)`,
+  // Every finished run (for stats), and how many runs finished in each 0.1 s bucket.
+  `CREATE TABLE IF NOT EXISTS runs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, player TEXT NOT NULL, hash TEXT NOT NULL,
+    course TEXT NOT NULL, time REAL NOT NULL, created_at INTEGER NOT NULL)`,
+  'CREATE INDEX IF NOT EXISTS runs_by_hash ON runs (hash, id)',
+  'CREATE INDEX IF NOT EXISTS runs_by_player ON runs (player)',
+  'CREATE TABLE IF NOT EXISTS run_times (bucket INTEGER PRIMARY KEY, n INTEGER NOT NULL)',
 ];
 
 /** Columns added to tables after they were first made: [table, column, type]. */

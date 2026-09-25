@@ -137,6 +137,8 @@ button:focus-visible { outline: 3px solid var(--player); outline-offset: 2px; }
 #result-detail { color: var(--muted); font-size: 14px; }
 #result-best { font-size: 14px; font-weight: 700; }
 #result-best.new { color: var(--player); }
+#result-stats, .stats-line { font-size: 14px; }
+#result-stats strong, .stats-line strong { color: var(--player); }
 #result .primary { background: var(--ink); color: #fff; margin-top: 6px; }
 #result-exit { align-self: center; }
 

@@ -16,7 +16,7 @@ export interface Verdict {
 }
 
 /** Where a run being checked comes from (for stats). */
-export type RunSource = 'daily' | 'room';
+export type RunSource = 'daily' | 'room' | 'run';
 
 /**
  * Replays a run on stage `stage` for at most maxSeconds of race time, and records the check in
