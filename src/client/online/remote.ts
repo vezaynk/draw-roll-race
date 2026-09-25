@@ -1,6 +1,8 @@
 // Other people in a room: their positions arrive ~15 times a second and are
 // drawn RENDER_DELAY_MS in the past, blended between the two updates around that moment.
 import { decodeLimbs } from '../../shared/limbs';
+import { sanitizeLook } from '../../shared/look';
+import type { Look } from '../../shared/look';
 import { POSES } from '../../shared/poses';
 import type { EncodedLimbs, Point, Runner } from '../../shared/types';
 import { createRunner } from '../../shared/runner';
@@ -26,6 +28,7 @@ export interface RemoteRacer {
   name: string;
   color: string;
   limbs: EncodedLimbs | null;
+  look: Look;
   runner: Runner | null;
   samples: Sample[];
 }
@@ -35,6 +38,7 @@ interface RacerInfo {
   name: string;
   color: string;
   limbs?: EncodedLimbs | null;
+  look?: unknown;
 }
 
 export function newRacer(info: RacerInfo): RemoteRacer {
@@ -43,6 +47,7 @@ export function newRacer(info: RacerInfo): RemoteRacer {
     name: info.name,
     color: info.color,
     limbs: info.limbs ?? null,
+    look: sanitizeLook(info.look),
     runner: null,
     samples: [],
   };
@@ -108,7 +113,7 @@ export function drawRacers(
 ): void {
   const labels = visible.map(({ racer, pose }) => {
     const runner = posedRunner(racer, pose);
-    drawRunner(g, runner, 0.8);
+    drawRunner(g, runner, 0.8, racer.look);
     return { text: racer.name, color: racer.color, ...labelSpot(runner) };
   });
   drawLabels(g, labels);

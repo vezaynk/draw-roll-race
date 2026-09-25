@@ -57,6 +57,30 @@ with a leaderboard of the fastest runs. The start screen names the day's
 leader, but only your own best run comes back as a ghost: nobody's run is
 shown to other players, so strategies stay private.
 
+## Customize (🎨)
+
+The 🎨 **Customize** button on the start screen dresses up your runner: a hair
+style (spiky, bob, long, mohawk, afro, ponytail), a hat (cap, top hat, beanie,
+crown, party hat), eyes (dot, big, sleepy, happy, angry, starry) and glasses
+(round, square, shades, monocle, goggles), or tap **Shuffle**. Your look shows
+on your runner, your ghost and the drawing pad, and other players see it in
+rooms. It is purely cosmetic.
+
+Choosing a look needs a player saved with a passkey (the modal offers **Save
+with a passkey**). A chosen look is kept on the server with your player, so it
+follows your passkey to other devices.
+
+## Default name and look
+
+Every player starts with a name and a look picked by their public player hash,
+so they stay the same from round to round and on every device. The name is
+"Adjective Noun" from 64 upbeat adjectives and 64 sports nouns (e.g. *Swift
+Sprinter*, *Plucky Goalie*: `shared/names.ts`); the look picks each part from
+the next bytes of the hash (`lookFromHash` in `shared/look.ts`). Both are only
+fallbacks: once you type a name or choose a look, that is stored and shown
+instead. The server fills in the same default name on leaderboards for players
+who haven't chosen one.
+
 ## Options (⚙)
 
 - **Your player:** your name, and passkeys to keep your player on any device (see
@@ -191,7 +215,9 @@ TypeScript throughout, written to the Airbnb style guide's principles (no linter
   - `main.ts` boots it. `state.ts` holds the game state and the hooks online play uses.
   - `race.ts` (the race loop), `pad.ts` (drawing), `hud.ts`, `results.ts`, `controls.ts`,
     `options.ts`, `ghost.ts`, `daily.ts`, `sound.ts`, `storage.ts`.
-  - `render/`: the scene and camera, obstacles, runners and shattered pieces.
+  - `render/`: the scene and camera, obstacles, runners (with their looks: `look.ts`) and
+    shattered pieces. `lookPicker.ts` is the Customize modal and `appearance.ts` picks the look each round; `shared/look.ts` lists the
+    choices.
   - `online/`: the connection, the Online menu, the lobby, and other racers.
 - `src/worker/`: the Cloudflare Worker.
   - `index.ts` (routes), `room.ts` (the `RaceRoom` Durable Object), `roomState.ts`,

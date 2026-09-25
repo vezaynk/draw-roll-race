@@ -31,6 +31,7 @@
     <button id="start-daily" type="button" class="primary" title="The same course for everyone today, with a leaderboard"><span aria-hidden="true">🏆</span>Daily course</button>
     <button id="start-tutorial" type="button" title="Learn which shapes beat each obstacle"><span aria-hidden="true">🎓</span>Tutorial</button>
     <button id="start-online" type="button" title="Create or join a room" hidden><span aria-hidden="true">👥</span>Play with friends<small>Online</small></button>
+    <button id="start-look" type="button" title="Hair, hats, eyes and glasses for your runner"><span aria-hidden="true">🎨</span>Customize</button>
   </nav>
   <p id="pad-hint">Draw from the shoulder or hip to give your runner arms or legs</p>
   <canvas id="pad" width="320" height="200" aria-label="Drawing pad"></canvas>
@@ -65,7 +66,7 @@
       <h3 id="account-title">Your player</h3>
       <div class="field-row">
         <label for="account-name">Name</label>
-        <input id="account-name" type="text" maxlength="16" autocomplete="nickname" spellcheck="false" placeholder="Runner">
+        <input id="account-name" type="text" maxlength="24" autocomplete="nickname" spellcheck="false" placeholder="Runner">
       </div>
       <p id="account-status" class="menu-note"></p>
       <div class="btn-row">
@@ -86,6 +87,29 @@
           <option value="small">Small</option><option value="normal">Normal</option><option value="large">Large</option>
         </select>
       </div>
+    </section>
+  </div>
+</div>
+
+<div id="look-menu" hidden>
+  <div class="card">
+    <div class="lobby-head">
+      <h2>Customize</h2>
+      <button id="look-close" type="button" class="quiet">Done</button>
+    </div>
+    <div class="look-row">
+      <canvas id="look-preview" width="112" height="112" aria-label="Your runner's look"></canvas>
+      <div id="look-pickers"></div>
+    </div>
+    <div id="look-actions" class="btn-row">
+      <button id="look-shuffle" type="button" class="quiet">Shuffle</button>
+    </div>
+    <section id="look-locked" class="menu-block" hidden>
+      <p class="menu-note">Save your player with a passkey to choose your look. Until then, this is your look: it comes with your player.</p>
+      <div class="btn-row">
+        <button id="look-save" type="button" class="primary">Save with a passkey</button>
+      </div>
+      <p id="look-note" class="menu-note" role="status"></p>
     </section>
   </div>
 </div>
@@ -143,7 +167,7 @@
     <p id="lobby-status" role="status"></p>
     <div class="name-row">
       <label for="my-name">Your name</label>
-      <input id="my-name" type="text" maxlength="16" autocomplete="nickname" spellcheck="false">
+      <input id="my-name" type="text" maxlength="24" autocomplete="nickname" spellcheck="false">
     </div>
     <ul id="player-list" aria-label="Racers"></ul>
     <button id="follow-btn" type="button" hidden></button>

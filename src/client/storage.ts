@@ -2,6 +2,9 @@
 // windows), so every access is wrapped and the game works without it.
 import { TUTORIAL } from '../shared/course/stages';
 import { playerHash } from '../shared/identity';
+import { sanitizeLook } from '../shared/look';
+import type { Look } from '../shared/look';
+import { nameFromHash } from '../shared/names';
 import type { SectionType } from '../shared/types';
 import { randomId } from './dom';
 
@@ -31,6 +34,8 @@ export interface SaveData {
   playerHash: string;
   /** Signed in with a passkey on this device. */
   signedIn: boolean;
+  /** The look you chose for your runner; null until you choose one (see appearance.ts). */
+  look: Look | null;
 }
 
 const DEFAULTS: SaveData = {
@@ -46,6 +51,7 @@ const DEFAULTS: SaveData = {
   player: '',
   playerHash: '',
   signedIn: false,
+  look: null,
 };
 
 export function readJson<T>(key: string, fallback: T): T {
@@ -68,6 +74,7 @@ export function writeJson(key: string, value: unknown): void {
 function load(): { data: SaveData; firstVisit: boolean } {
   const stored = readJson<Partial<SaveData> | null>(SAVE_KEY, null);
   const data: SaveData = { ...DEFAULTS, ...stored };
+  data.look = data.look ? sanitizeLook(data.look) : null;
   const newId = !data.player;
   if (newId) data.player = crypto.randomUUID?.() ?? randomId();
   // For new players, the tutorial comes first in the stage list (the game opens on the daily
@@ -93,6 +100,14 @@ export function playerName(): string {
   } catch {
     return '';
   }
+}
+
+/**
+ * The name you're shown under: the one you chose, or else your default "Adjective Noun" name
+ * from your player hash (the same one the server gives you).
+ */
+export function displayName(): string {
+  return playerName() || (save.playerHash ? nameFromHash(save.playerHash) : 'Runner');
 }
 
 export function setPlayerName(name: string): void {

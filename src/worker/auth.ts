@@ -5,6 +5,7 @@
 //   POST /api/auth/login/options                       start signing in with a passkey
 //   POST /api/auth/login/verify     { response, localPlayer }  finish it: sends back the player ID
 //   GET  /api/auth/me                                  who is signed in (with their player ID)
+//   POST /api/auth/look             { look }           save the signed-in player's look
 //   POST /api/auth/logout
 //
 // The game offers one button, "Save with a passkey" (client/account.ts): it uses a passkey the
@@ -19,6 +20,8 @@ import {
 import type { AuthenticationResponseJSON, RegistrationResponseJSON } from '@simplewebauthn/server';
 import { isoBase64URL } from '@simplewebauthn/server/helpers';
 import { PLAYER_RE, playerHash } from '../shared/identity';
+import { sanitizeLook } from '../shared/look';
+import { nameFromHash } from '../shared/names';
 import ensureSchema from './db';
 import type { Env } from './env';
 import { allowed, cleanText, json, logError } from './http';
@@ -86,7 +89,7 @@ async function registerOptions(request: Request, db: D1Database): Promise<Respon
   const input = await body<{ player?: unknown; name?: unknown }>(request);
   const who = await posterFor(db, request, input?.player);
   if (!who.ok) return json({ error: who.error }, who.status);
-  const name = moderateName(cleanText(input?.name, 16), '');
+  const name = moderateName(cleanText(input?.name, 24), '');
   let player = await upsertPlayer(db, who.player, name);
   if (!player.user_handle) {
     await db.prepare('UPDATE players SET user_handle = ?1 WHERE id = ?2 AND user_handle IS NULL')
@@ -95,7 +98,7 @@ async function registerOptions(request: Request, db: D1Database): Promise<Respon
   }
   const existing = await db.prepare('SELECT id, transports FROM passkeys WHERE player = ?1')
     .bind(player.id).all<{ id: string; transports: string | null }>();
-  const shown = player.name || 'Runner';
+  const shown = player.name || nameFromHash(player.hash);
   const options = await generateRegistrationOptions({
     rpName: RP_NAME,
     rpID: siteOf(request).rpID,
@@ -180,13 +183,14 @@ async function mergeScores(db: D1Database, from: string, to: string): Promise<vo
     return [
       db.prepare('DELETE FROM daily_scores WHERE day = ?1 AND player = ?2').bind(r.day, to),
       db.prepare('UPDATE daily_scores SET player = ?1, hash = ?2, name = ?3 WHERE day = ?4 AND player = ?5')
-        .bind(to, target?.hash ?? '', target?.name || 'Runner', r.day, from),
+        .bind(to, target?.hash ?? '', target?.name || nameFromHash(target?.hash ?? ''), r.day, from),
     ];
   });
   statements.push(
     db.prepare('DELETE FROM daily_scores WHERE player = ?1').bind(from),
     // A player without a name takes the anonymous player's.
-    db.prepare(`UPDATE players SET name = (SELECT name FROM players WHERE id = ?1)
+    // (The anonymous player may have no row: then there's no name to take.)
+    db.prepare(`UPDATE players SET name = COALESCE((SELECT name FROM players WHERE id = ?1), '')
       WHERE id = ?2 AND name = ''`).bind(from, to),
     db.prepare('DELETE FROM players WHERE id = ?1 AND claimed = 0').bind(from),
   );
@@ -237,6 +241,7 @@ async function loginVerify(request: Request, db: D1Database): Promise<Response> 
     player: passkey.player,
     hash: player?.hash ?? await playerHash(passkey.player),
     name: player?.name ?? '',
+    look: savedLook(player?.look ?? null),
   }), cookie);
 }
 
@@ -247,8 +252,33 @@ async function me(request: Request, db: D1Database): Promise<Response> {
   const count = await db.prepare('SELECT COUNT(*) AS n FROM passkeys WHERE player = ?1')
     .bind(player.id).first<{ n: number }>();
   return json({
-    signedIn: true, player: player.id, hash: player.hash, name: player.name, passkeys: count?.n ?? 0,
+    signedIn: true,
+    player: player.id,
+    hash: player.hash,
+    name: player.name,
+    passkeys: count?.n ?? 0,
+    look: savedLook(player.look),
   });
+}
+
+/** A stored look, checked (null if none is saved yet). */
+function savedLook(stored: string | null) {
+  if (!stored) return null;
+  try {
+    return sanitizeLook(JSON.parse(stored));
+  } catch {
+    return null;
+  }
+}
+
+/** Saves the signed-in player's look (customising your runner needs a saved player). */
+async function saveLook(request: Request, db: D1Database): Promise<Response> {
+  const id = await sessionPlayer(db, request);
+  if (!id) return json({ error: 'Save your player with a passkey to customise your runner.' }, 401);
+  const input = await body<{ look?: unknown }>(request);
+  const look = sanitizeLook(input?.look);
+  await db.prepare('UPDATE players SET look = ?1 WHERE id = ?2').bind(JSON.stringify(look), id).run();
+  return json({ ok: true, look });
 }
 
 async function logout(request: Request, db: D1Database): Promise<Response> {
@@ -262,6 +292,7 @@ const ROUTES: Record<string, Route> = {
   'POST login/options': loginOptions,
   'POST login/verify': loginVerify,
   'GET me': me,
+  'POST look': saveLook,
   'POST logout': logout,
 };
 

@@ -1,6 +1,7 @@
 // Online rooms: joining and leaving, the messages from the room, and the hooks that put other
 // racers into the game.
 import { encodeLimbs, hasLimbs } from '../../shared/limbs';
+import { sanitizeLook } from '../../shared/look';
 import {
   CODE_RE, EMOTES, RANDOM_COURSE, SAME_COURSE,
 } from '../../shared/protocol';
@@ -16,7 +17,9 @@ import { drawBubble, labelSpot } from '../render/draw';
 import { render } from '../render/scene';
 import { spawnShards } from '../render/shards';
 import { hooks, state } from '../state';
-import { playerName, setPlayerName } from '../storage';
+import {
+  displayName, myHash, playerName, setPlayerName,
+} from '../storage';
 import RoomConnection from './connection';
 import type { RoomSetup } from './connection';
 import {
@@ -166,6 +169,7 @@ function onWelcome(m: Extract<ServerMessage, { type: 'welcome' }>): void {
   // Test runs pick the short test course for ready-up races too.
   if (isHost() && Number.isInteger(testStage)) send({ type: 'settings', nextStage: testStage });
   if (hasLimbs(state.limbs)) send({ type: 'limbs', limbs: encodeLimbs(state.limbs) });
+  send({ type: 'look', look: state.look });
   const stillRacing = m.resumed && m.room.phase === 'racing' && net.racingIn && net.raceId === m.room.raceId
     && m.room.participants.includes(m.you) && !m.room.results.some((r) => r.id === m.you);
   if (stillRacing) {
@@ -335,6 +339,11 @@ function handle(m: ServerMessage): void {
     case 'emote':
       showEmote(m.id, m.e);
       break;
+    case 'look': {
+      const who = net.people.get(m.id);
+      if (who) who.look = sanitizeLook(m.look);
+      break;
+    }
     case 'notice':
       toast(m.message, 2600);
       setStatus(m.message, true);
@@ -357,7 +366,7 @@ function syncStageSelect(): void {
 function join(code: string, setup?: RoomSetup): void {
   closeMenu();
   net.conn?.close();
-  net.conn = new RoomConnection(code, () => nameInput().value.trim() || playerName(), {
+  net.conn = new RoomConnection(code, () => nameInput().value.trim() || displayName(), {
     message: handle,
     lost: (retrying) => setStatus(retrying ? 'Reconnecting…' : 'Lost connection to the room. Reload the page to try again.', true),
   });
@@ -374,7 +383,11 @@ function join(code: string, setup?: RoomSetup): void {
   resetStage();
   setStatus('Connecting…');
   showLobby(true);
-  net.conn.open(setup);
+  // Your default name comes from your player hash, worked out on a first visit: wait for it.
+  const conn = net.conn;
+  myHash().catch(() => '').then(() => {
+    if (net.conn === conn) conn.open(setup);
+  });
 }
 
 function leave(): void {
@@ -426,6 +439,7 @@ function installHooks(): void {
     refreshLobby();
   };
   // In a room, Exit gives up any race you are in and leaves the room.
+  hooks.onLook = () => send({ type: 'look', look: state.look });
   hooks.onReturnToLobby = () => {
     showLobby(true);
     refreshLobby();
@@ -474,8 +488,9 @@ function bindLobbyButtons(): void {
   byId('leave-btn').addEventListener('click', leave);
   byId('copy-link').addEventListener('click', copyInviteLink);
   nameInput().value = playerName();
+  nameInput().placeholder = displayName();
   nameInput().addEventListener('change', () => {
-    const name = nameInput().value.trim().slice(0, 16);
+    const name = nameInput().value.trim().slice(0, 24);
     if (!name) return;
     setPlayerName(name);
     send({ type: 'name', name });

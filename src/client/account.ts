@@ -6,9 +6,10 @@
 // Signed in, the button adds another passkey. Logging out forgets everything on this device.
 // See worker/auth.ts.
 import { browserSupportsWebAuthn, startAuthentication, startRegistration } from '@simplewebauthn/browser';
+import { lookAfterSignIn } from './appearance';
 import { byId } from './dom';
 import {
-  becomePlayer, forgetEverything, persist, playerName, save, setPlayerName,
+  becomePlayer, displayName, forgetEverything, persist, playerName, save, setPlayerName,
 } from './storage';
 
 interface Me {
@@ -17,6 +18,7 @@ interface Me {
   hash?: string;
   name?: string;
   passkeys?: number;
+  look?: unknown;
 }
 
 let online = false;
@@ -46,6 +48,7 @@ function render(): void {
   if (!online) return;
   const supported = browserSupportsWebAuthn();
   byId<HTMLInputElement>('account-name').value = playerName();
+  byId<HTMLInputElement>('account-name').placeholder = displayName();
   byId('account-status').textContent = save.signedIn
     ? 'Your player is saved with a passkey. Use it on any device to race as you.'
     : 'Save with a passkey to keep your name and daily times on any device. Already have one? Use it the same way.';
@@ -91,7 +94,8 @@ async function run(task: () => Promise<string>, show = note): Promise<boolean> {
 /** Makes a new passkey for this device's player (claiming it, or adding one when signed in). */
 async function createPasskey(): Promise<string> {
   const adding = save.signedIn;
-  const name = playerName() || 'Runner';
+  // Empty if you haven't chosen one: the server then uses your default name.
+  const name = playerName();
   const optionsJSON = await post<Parameters<typeof startRegistration>[0]['optionsJSON']>(
     'register/options',
     { player: save.player, name },
@@ -107,12 +111,13 @@ async function createPasskey(): Promise<string> {
 async function useExistingPasskey(): Promise<string> {
   const optionsJSON = await post<Parameters<typeof startAuthentication>[0]['optionsJSON']>('login/options');
   const response = await startAuthentication({ optionsJSON });
-  const out = await post<{ player: string; hash: string; name: string }>(
+  const out = await post<{ player: string; hash: string; name: string; look: unknown }>(
     'login/verify',
     { response, localPlayer: save.player },
   );
   becomePlayer(out.player, out.hash, out.name);
-  return `Saved. You’re playing as ${out.name || 'your player'} again.`;
+  lookAfterSignIn(out.look);
+  return `Saved. You’re playing as ${displayName()} again.`;
 }
 
 /**
@@ -150,6 +155,7 @@ async function refresh(): Promise<void> {
     const me = await res.json() as Me;
     if (me.signedIn && me.player && me.hash) {
       becomePlayer(me.player, me.hash, playerName() ? '' : me.name ?? '');
+      lookAfterSignIn(me.look);
     } else if (save.signedIn) {
       save.signedIn = false;
       persist();
@@ -168,7 +174,7 @@ export async function enableAccount(): Promise<void> {
 
 export default function initAccount(): void {
   byId('account-name').addEventListener('change', (e) => {
-    const name = (e.target as HTMLInputElement).value.trim().slice(0, 16);
+    const name = (e.target as HTMLInputElement).value.trim().slice(0, 24);
     if (name) setPlayerName(name);
   });
   byId('passkey-save').addEventListener('click', () => saveWithPasskey());

@@ -104,7 +104,7 @@ export default async function submitDaily(
       body: JSON.stringify({
         day,
         player: save.player,
-        name: playerName() || 'Runner',
+        name: playerName(),
         time: Number(time.toFixed(2)),
         inputs: rec.inputs,
       }),

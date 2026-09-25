@@ -13,6 +13,8 @@ export interface PlayerRow {
   name: string;
   user_handle: string | null;
   claimed: number;
+  /** Chosen look (JSON), for signed-in players. */
+  look: string | null;
 }
 
 /** URL-safe base64 of random bytes. */
@@ -22,7 +24,7 @@ export function randomToken(bytes = 32): string {
 }
 
 export function getPlayer(db: D1Database, id: string): Promise<PlayerRow | null> {
-  return db.prepare('SELECT id, hash, name, user_handle, claimed FROM players WHERE id = ?1')
+  return db.prepare('SELECT id, hash, name, user_handle, claimed, look FROM players WHERE id = ?1')
     .bind(id).first<PlayerRow>();
 }
 

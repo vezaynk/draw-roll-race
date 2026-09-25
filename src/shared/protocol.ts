@@ -1,4 +1,5 @@
 // Messages between browsers and a room (worker/room.ts), and the data they carry.
+import type { Look } from './look';
 import type { RunInput } from './replay';
 import type {
   EncodedLimbs, LimbKind, Pose,
@@ -24,6 +25,7 @@ export interface PlayerInfo {
   color: string;
   joinedAt: number;
   limbs?: EncodedLimbs | null;
+  look?: Look;
 }
 
 export interface RaceResult {
@@ -75,6 +77,7 @@ export type ClientMessage =
   | { type: 'name'; name: string }
   | { type: 'settings'; isPublic?: boolean; name?: string; nextStage?: number }
   | { type: 'ready'; ready: boolean }
+  | { type: 'look'; look: Look }
   | { type: 'emote'; e: number }
   | { type: 'start'; stage: number }
   | { type: 'finish'; r: number; time: number; inputs: RunInput[] }
@@ -89,6 +92,7 @@ export type ServerMessage =
   | { type: 'name'; id: string; name: string }
   | { type: 'settings'; isPublic: boolean; name: string; nextStage: number }
   | { type: 'ready'; ids: string[] }
+  | { type: 'look'; id: string; look: Look }
   | { type: 'emote'; id: string; e: number }
   | { type: 'limbs'; id: string; limbs: EncodedLimbs; pose?: Pose; lost?: LimbKind[] }
   | {

@@ -4,7 +4,7 @@ import type { ListedRoom } from '../../shared/protocol';
 import {
   byId, el, plural,
 } from '../dom';
-import { playerName } from '../storage';
+import { displayName } from '../storage';
 import type { RoomSetup } from './connection';
 
 export interface MenuActions {
@@ -80,7 +80,7 @@ export function closeMenu(): void {
 
 export function openMenu(actions: MenuActions): void {
   joinError('');
-  byId<HTMLInputElement>('new-room-name').placeholder = `${playerName() || 'My'}'s room`;
+  byId<HTMLInputElement>('new-room-name').placeholder = `${displayName()}'s room`;
   byId('online-menu').hidden = false;
   loadPublicRooms(actions);
   window.clearInterval(refreshTimer);

@@ -3,6 +3,8 @@
 import buildCourse from '../shared/course/build';
 import type CpuRacer from '../shared/cpu/racer';
 import { emptyLimbs } from '../shared/limbs';
+import { DEFAULT_LOOK, lookFromHash } from '../shared/look';
+import type { Look } from '../shared/look';
 import type {
   Course, CourseSection, LimbKind, Limbs, Point, Runner, SectionType,
 } from '../shared/types';
@@ -14,6 +16,8 @@ export interface GameState {
   course: Course;
   limbs: Limbs;
   player: Runner | null;
+  /** The look your runner wears this round (see appearance.ts). */
+  look: Look;
   /** The CPU racing with you in the tutorial (the only place with a CPU). */
   cpu: CpuRacer | null;
   /** When the CPU finished (null until then). */
@@ -41,6 +45,8 @@ export const state: GameState = {
   course: buildCourse(save.stage),
   limbs: emptyLimbs(),
   player: null,
+  // Until the hash is worked out on a first visit, a plain look (main.ts then puts on yours).
+  look: save.look ?? (save.playerHash ? lookFromHash(save.playerHash) : DEFAULT_LOOK),
   cpu: null,
   cpuTime: null,
   ghosts: [],
@@ -64,6 +70,8 @@ export interface Hooks {
   onFinish?: (time: number) => void;
   /** The Exit button while online. */
   onExit?: () => void;
+  /** The look you wear changed. */
+  onLook?: () => void;
   /** "Return to lobby" on the results card after an online race. */
   onReturnToLobby?: () => void;
   /** Where the camera looks when you are not racing yourself. */

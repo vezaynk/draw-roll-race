@@ -7,6 +7,7 @@ import {
   RANDOM_BASE, STAGES, isTestStage,
 } from '../shared/course/stages';
 import { sanitizeLimbs } from '../shared/limbs';
+import { sanitizeLook } from '../shared/look';
 import { cleanInputs } from '../shared/replay';
 import type { RunInput } from '../shared/replay';
 import {
@@ -169,7 +170,7 @@ export class RaceRoom extends DurableObject<Env> {
     const { room } = this;
     const player: Player = resumed ? { ...resumed, token } : {
       id: crypto.randomUUID().slice(0, 8),
-      name: moderateName(cleanText(url.searchParams.get('name'), 16), `Runner ${room.joins + 1}`),
+      name: moderateName(cleanText(url.searchParams.get('name'), 24), `Runner ${room.joins + 1}`),
       color: this.freeColor(),
       joinedAt: Date.now(),
       token,
@@ -248,8 +249,15 @@ export class RaceRoom extends DurableObject<Env> {
       }, ws);
     },
 
+    look: (ws, me, msg) => {
+      if (!this.allow(me.id)) return;
+      const look = sanitizeLook(msg.look);
+      ws.serializeAttachment({ ...me, look } satisfies Attachment);
+      this.broadcast({ type: 'look', id: me.id, look }, ws);
+    },
+
     name: async (ws, me, msg) => {
-      const name = moderateName(cleanText(msg.name, 16), null);
+      const name = moderateName(cleanText(msg.name, 24), null);
       if (!name) {
         sendTo(ws, { type: 'notice', message: 'That name isn’t allowed. Try another one.' });
         return;

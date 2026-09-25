@@ -2,6 +2,8 @@
 import buildCourse from '../shared/course/build';
 import { RunReplay } from '../shared/replay';
 import initAccount from './account';
+import { wearMyLook } from './appearance';
+import initLookPicker from './lookPicker';
 import initControls, { enterDaily } from './controls';
 import submitDaily, { initSaveScore } from './daily';
 import { buildProgress, updateHud } from './hud';
@@ -12,7 +14,7 @@ import { onLimbCleared, onLimbsDrawn, resetStage } from './race';
 import { initScene } from './render/scene';
 import { initSound } from './sound';
 import { state } from './state';
-import { firstVisit } from './storage';
+import { firstVisit, myHash } from './storage';
 
 declare global {
   interface Window {
@@ -36,6 +38,7 @@ function boot(): void {
   initControls();
   initOptions();
   initAccount();
+  initLookPicker();
   initSaveScore();
   initSound();
   resetStage();
@@ -43,6 +46,8 @@ function boot(): void {
   updateHud();
   if (!direct) enterDaily(firstVisit ? 'Welcome! New here? Try the Tutorial first. ' : '');
   initOnline();
+  // A first visit works out the player hash, which picks the default look.
+  myHash().then(wearMyLook).catch(() => {});
   window.drr = {
     state, buildCourse, RunReplay, submitDaily,
   };

@@ -25,13 +25,24 @@ const TABLES = [
     expires_at INTEGER NOT NULL)`,
 ];
 
-/** Columns added to daily_scores after it was first made. */
-const LATER_COLUMNS: [string, string][] = [['run', 'TEXT'], ['verify_ms', 'INTEGER'], ['hash', 'TEXT']];
+/** Columns added to tables after they were first made: [table, column, type]. */
+const LATER_COLUMNS: [string, string, string][] = [
+  ['daily_scores', 'run', 'TEXT'],
+  ['daily_scores', 'verify_ms', 'INTEGER'],
+  ['daily_scores', 'hash', 'TEXT'],
+  // A signed-in player's chosen look (JSON; see shared/look.ts).
+  ['players', 'look', 'TEXT'],
+];
 
 async function addLaterColumns(db: D1Database): Promise<void> {
-  const columns = await db.prepare('PRAGMA table_info(daily_scores)').all<{ name: string }>();
-  const missing = LATER_COLUMNS.filter(([name]) => !columns.results.some((c) => c.name === name));
-  await Promise.all(missing.map(([name, type]) => db.prepare(`ALTER TABLE daily_scores ADD COLUMN ${name} ${type}`).run()));
+  const tables = [...new Set(LATER_COLUMNS.map(([table]) => table))];
+  const existing = await Promise.all(tables.map(async (table) => {
+    const columns = await db.prepare(`PRAGMA table_info(${table})`).all<{ name: string }>();
+    return columns.results.map((c) => `${table}.${c.name}`);
+  }));
+  const have = new Set(existing.flat());
+  const missing = LATER_COLUMNS.filter(([table, name]) => !have.has(`${table}.${name}`));
+  await Promise.all(missing.map(([table, name, type]) => db.prepare(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`).run()));
 }
 
 /** Fills in hashes for scores saved before hashes existed. */
