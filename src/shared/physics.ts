@@ -1,13 +1,14 @@
 // Fixed-step physics: gravity and zones, spinning limbs, water and mud, and impulse-based contacts
-// with the ground and ceilings (friction, belts, bounce pads, spikes).
+// with the ground and ceilings (friction, belts, bounce pads, spikes). A limb wedged between
+// opposite surfaces with no room to turn shatters, like one that touches spikes.
 import { CFG } from './config';
 import {
   ceilAt, ceilingNearby, fluidAt, groundAt, surfAt, zoneAt,
 } from './course/queries';
 import { nearestOnHeights } from './geometry';
-import { forEachPoint } from './runner';
+import { forEachPoint, unpressed } from './runner';
 import type {
-  Block, Course, Joint, Runner, Surface,
+  Block, Course, Joint, Pressed, Runner, Surface,
 } from './types';
 
 interface Contact {
@@ -16,6 +17,38 @@ interface Contact {
   nx: number;
   ny: number;
   pen: number;
+}
+
+/** Notes which way a contact pushes part of the runner. */
+function press(pressed: Pressed, nx: number, ny: number): void {
+  const p = pressed;
+  if (ny < -0.5) p.up = true;
+  if (ny > 0.5) p.down = true;
+  if (nx > 0.5) p.right = true;
+  if (nx < -0.5) p.left = true;
+}
+
+const reset = (pressed: Pressed) => Object.assign(pressed, unpressed());
+
+/**
+ * The limbs with no room left this step. The runner is squeezed when it is pushed from opposite
+ * sides at once (floor and ceiling, or wall and wall). A limb squeezed on its own breaks.
+ * Otherwise, when the runner as a whole is (say its arm is against a tunnel roof while its leg
+ * stands on the floor), the limbs against the ceiling break, or, if only the torso is, the ones
+ * holding it up; between walls, those against the wall ahead (or, failing that, behind).
+ */
+function crushedLimbs(body: Runner): Joint[] {
+  const limbs = body.joints.filter((j) => j.active);
+  const alone = limbs.filter(({ pressed: p }) => (p.up && p.down) || (p.left && p.right));
+  if (alone.length) return alone;
+  const parts = [body.pressed, ...limbs.map((j) => j.pressed)];
+  const any = (side: keyof Pressed) => parts.some((p) => p[side]);
+  const pushed = (side: keyof Pressed) => limbs.filter((j) => j.pressed[side]);
+  const out = new Set<Joint>();
+  const pick = (first: Joint[], second: Joint[]) => (first.length ? first : second).forEach((j) => out.add(j));
+  if (any('up') && any('down')) pick(pushed('down'), pushed('up'));
+  if (any('left') && any('right')) pick(pushed('left'), pushed('right'));
+  return [...out];
 }
 
 /** Resolves one contact: normal impulse (with restitution), then friction, then separation. */
@@ -28,6 +61,7 @@ function applyImpulse(
   const {
     px, py, nx, ny, pen,
   } = c;
+  if (pen >= CFG.CRUSH_PEN) press(joint ? joint.pressed : body.pressed, nx, ny);
   const rx = joint ? px - (body.x + joint.ox) : 0;
   const ry = joint ? py - (body.y + joint.oy) : 0;
   const invI = joint ? joint.invI : 0;
@@ -167,10 +201,11 @@ function applyFluids(course: Course, body: Runner, dt: number): void {
   });
 }
 
-/** Advances a runner by dt seconds. Afterwards, body.hit says which limbs touched spikes. */
+/** Advances a runner by dt seconds. Afterwards, body.hit says which limbs broke (spikes or crushed). */
 export default function step(course: Course, body: Runner, dt: number): void {
   body.hit.arm = false;
   body.hit.leg = false;
+  reset(body.pressed);
   if (body.immune > 0) body.immune -= dt;
   const zone = zoneAt(course, body.x);
   body.vy += CFG.G * (zone && zone.grav ? zone.grav : 1) * dt;
@@ -179,6 +214,7 @@ export default function step(course: Course, body: Runner, dt: number): void {
 
   const wmax = CFG.WMAX * body.speed;
   body.joints.forEach((joint) => {
+    reset(joint.pressed);
     if (!joint.active) return;
     if (joint.w < wmax) {
       const accel = CFG.MOTOR * CFG.G * body.mass * joint.reach * joint.invI * dt;
@@ -191,4 +227,14 @@ export default function step(course: Course, body: Runner, dt: number): void {
 
   applyFluids(course, body, dt);
   forEachPoint(body, (px, py, joint) => collide(course, body, px, py, joint));
+
+  // A limb wedged with no room to turn for long enough breaks: squeezed, and (almost) not
+  // turning. Unlike spikes, a freshly drawn limb isn't spared: one that doesn't fit where it's
+  // drawn can't turn at all.
+  const crushed = crushedLimbs(body);
+  body.joints.forEach((joint) => {
+    const stuck = crushed.includes(joint) && Math.abs(joint.w) < CFG.CRUSH_SPIN * wmax;
+    joint.crushed = stuck ? joint.crushed + dt : 0;
+    if (joint.crushed >= CFG.CRUSH_TIME) body.hit[joint.kind] = true;
+  });
 }

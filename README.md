@@ -38,6 +38,11 @@ npm test           # type check, unit tests, course simulation, browser tests
   Mid-race, your runner carries on without it.
 - **Spikes** shatter any limb that touches them. Draw a new one: a fresh limb
   is safe from spikes for a second, so you can climb back out.
+- **No room to turn:** a limb wedged between opposite surfaces, such as a
+  tunnel roof and the floor or the underside of a block and the ground, that
+  can barely turn shatters after a moment instead of grinding through the rock.
+  A limb drawn too big for where you are breaks at once, so draw a smaller one
+  (the rule is in `shared/physics.ts`).
 - The game opens on today's **daily course**, ready to race. The **tutorial**
   shows a tip before each obstacle (new players are pointed to it) and is the
   only place with a CPU to race against; elsewhere, a tip appears the first
@@ -206,7 +211,7 @@ message in the lobby.
 - The tutorial's CPU gets a personality from a random seed: how fast its limbs
   spin (slowly), how quickly it reacts, how far ahead it looks, and its own
   versions of each shape. When stuck for 3 seconds, it tries the right shape
-  for where it is, then the others. When spikes break a limb, it redraws it.
+  for where it is, then the others. When spikes break a limb (or it's crushed), it redraws it.
 - Generated courses vary each obstacle's sizes within ranges that
   `tools/sim.ts` checks a scripted player (the tests' `tests/support/bot.ts`)
   can finish.
