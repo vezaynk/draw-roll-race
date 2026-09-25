@@ -1,6 +1,8 @@
 // Buttons around the race: the stage name, Exit, the results card, and the start buttons for the
-// daily course and the tutorial.
-import { TUTORIAL, dailyStage, today } from '../shared/course/stages';
+// daily course, the tutorial and a random course.
+import {
+  RANDOM_BASE, TUTORIAL, dailyStage, today,
+} from '../shared/course/stages';
 import TIPS from '../shared/course/tips';
 import { hasLimbs } from '../shared/limbs';
 import { loadLeader } from './daily';
@@ -58,6 +60,24 @@ function exitToStart(): void {
   showHint(DEFAULT_HINT, 0);
 }
 
+/** How many generated courses "a random course" picks from (the daily courses come after). */
+const RANDOM_COURSES = 1000000;
+
+/** A generated course picked at random, ready to race (from the start screen). */
+function enterRandomCourse(): void {
+  state.daily = null;
+  state.stage = RANDOM_BASE + Math.floor(Math.random() * RANDOM_COURSES);
+  hideResults();
+  resetStage();
+  showHint(DEFAULT_HINT, 0);
+}
+
+/** The same, raced at once (from the results card). */
+function playRandomCourse(): void {
+  enterRandomCourse();
+  startRace();
+}
+
 /** The tutorial, then Stage 1 up to the furthest unlocked stage. */
 function stageCycle(): number[] {
   return [TUTORIAL, ...Array.from({ length: save.unlocked + 1 }, (_, i) => i)];
@@ -86,6 +106,7 @@ export default function initControls(): void {
 
   byId('start-daily').addEventListener('click', () => enterDaily());
   byId('start-tutorial').addEventListener('click', enterTutorial);
+  byId('start-random').addEventListener('click', enterRandomCourse);
   byId('exit-btn').addEventListener('click', exitToStart);
   byId('result-exit').addEventListener('click', exitToStart);
 
@@ -94,6 +115,8 @@ export default function initControls(): void {
     resetStage();
     startRace();
   });
+
+  byId('random-btn').addEventListener('click', playRandomCourse);
 
   byId('next-btn').addEventListener('click', () => {
     const action = byId('next-btn').dataset.action as NextAction;
